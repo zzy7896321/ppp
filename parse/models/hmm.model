@@ -1,0 +1,19 @@
+model hidden_markov_model(n, a, b) {
+    // n -- chain length
+    // a -- number of possible states
+    // b -- number of possible observations
+    public states[n]   // hidden states
+    public observ[n]   // observations
+    public trans[a,a]  // transition matrix of size a*a
+    public emiss[a,b]  // emission matrix of size a*b
+    public start[a]    // start probabilities of size a
+
+    states[0] ~ dcat(start)
+    for i = 1 to n-1 {
+        states[i] ~ dcat(trans[states[i-1]])
+    }
+
+    for i = 0 to n-1 {
+        observ[i] ~ dcat(emiss[states[i]])
+    }
+}

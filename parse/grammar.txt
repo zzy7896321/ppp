@@ -1,0 +1,60 @@
+FIXME make sure this file is up-to-date with the implementation code
+
+         models -> model
+                 | model models
+
+          model -> "model" name "("              ")" "{" decls stmts "}"
+                 | "model" name "(" model_params ")" "{" decls stmts "}"
+
+   model_params -> name
+                 | name "," model_params
+
+          decls -> decl
+                 | decl decls
+
+          stmts -> stmt
+                 | stmt stmts
+
+           decl -> "public" variable
+                 | "private" variable
+
+           stmt -> variable "~" name "(" expr_seq ")"
+                 | variable "=" expr
+                 | "for" name "=" expr "to" expr "{" stmts "}"
+
+       expr_seq -> expr
+                 | expr "," expr_seq
+
+           expr -> "if" expr "then" expr "else" expr
+                 | "new" name "(" ")"
+                 | add_expr
+
+       add_expr -> term
+                 | term "+" add_expr
+                 | term "-" add_expr
+
+           term -> primary
+                 | primary "*" term
+                 | primary "/" term
+
+        primary -> numerical_value
+                 | variable
+                 | function_call
+                 | "(" expr ")"
+                 | "-" primary
+
+  function_call -> name "(" expr_seq ")"
+
+       variable -> name
+                 | field_var
+                 | index_var
+
+      field_var -> name "." name
+      index_var -> name "[" expr_seq "]"
+
+numerical_value -> integer_value
+                 | integer_value "." integer_value
+
+  integer_value -> [0-9]+
+
+           name -> [a-zA-Z_][0-9a-zA-Z_]*

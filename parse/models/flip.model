@@ -1,0 +1,11 @@
+model flip_example() {
+    public flip
+    public x
+    private x1
+    private x2
+
+    flip ~ dbern(0.5)
+    x1 ~ dnorm(0, 1)
+    x2 ~ dgamma(1, 1)
+    x = if flip then x1 else x2 + 2
+}

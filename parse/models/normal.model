@@ -1,0 +1,40 @@
+model normal_variables(n) {
+    public x[n]
+    public average
+    public std_deviation
+    private variance
+
+    average ~ dnorm(0, 0.0001)
+    std_deviation ~ dunif(0, 100)  // 0-100 percent
+    variance = std_deviation * std_deviation
+
+    for i = 0 to n-1 {
+        x[i] ~ dnorm(average, variance)
+    }
+}
+
+model stddev_and_variance() {
+    public stddev
+    public variance
+
+    stddev ~ dunif(0, 100)
+    variance = stddev * stddev
+}
+
+model normal_variables2(n) {
+    public x[n]
+    public average
+    public std_deviation
+    private variance
+    private sav
+
+    average ~ dnorm(0, 0.0001)
+
+    sav = new stddev_and_variance()
+    sav.stddev = std_deviation
+    sav.variance = variance
+
+    for i = 0 to n-1 {
+        x[i] ~ dnorm(average, variance)
+    }
+}

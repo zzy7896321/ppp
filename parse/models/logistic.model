@@ -1,0 +1,25 @@
+model logistic_regression(n) {
+    public x[n]
+    public y[n]
+    public w0
+    public w1
+    private p[n,2]
+    private bw
+
+    bw = new biased_weights()
+    bw.w0 = w0
+    bw.w1 = w1
+
+    for i = 0 to n-1 {
+        p[i,1] = w0 + w1 * x[i]
+        p[i,0] = 1 / (1 + exp(-p[i,1]))
+        y[i] ~ dbern(p[i,0])
+    }
+}
+
+model biased_weights() {
+    public w0
+    public w1
+    w0 ~ dnorm(0, 0.0001)
+    w1 ~ dnorm(0, 0.0001)
+}

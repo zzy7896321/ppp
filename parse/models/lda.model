@@ -1,0 +1,12 @@
+model latent_dirichlet_allocation(k, num_docs, num_words[], vocab_size) {
+  for i = 1 to k {
+    topics(i, :) = dirichlet(1, vocab_size);
+  }      
+  for i = 1 to num_docs {
+    topic_dist = dirichlet(1, k);
+    for j = 1 to num_words(i) {
+      topic = multinomial(topic_dist);
+      X{i}(j) = multinomial(topics(topic, :));
+    }
+  }
+}

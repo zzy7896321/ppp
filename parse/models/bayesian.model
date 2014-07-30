@@ -1,0 +1,24 @@
+model linear_regression(n) {
+    public x[n]
+    public y[n]
+    public slope
+    public intercept
+    private yhat[n]  // Estimated y values
+    private stddev
+    private variance
+    private sav
+    private bw
+
+    sav = new stddev_and_variance()  // Reuse previously defined model
+    sav.stddev = stddev
+    sav.variance = variance
+
+    bw = new biased_weights()  // Biased towards smaller weights
+    bw.w0 = slope
+    bw.w1 = intercept
+
+    for i = 0 to n-1 {
+        yhat[i] = intercept + slope * x[i]
+        y[i] ~ dnorm(yhat[i], variance)
+    }
+}
