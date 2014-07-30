@@ -13,6 +13,8 @@ struct pp_query_t* pp_compile_query(struct pp_instance_t* instance, const char* 
 	struct pp_query_t *output;
         char *single_query, *remain_query, *p;
 	int varn = 0;
+	_Bool positive = 1;
+	
 	output = (struct pp_query_t*) calloc(1, sizeof(struct pp_query_t));
 	single_query = (char*) calloc(1024, sizeof(char));
 	strcpy(single_query, query_string);
@@ -57,16 +59,30 @@ struct pp_query_t* pp_compile_query(struct pp_instance_t* instance, const char* 
 		output->compare=PPPL_COMPARE_NLT;
 		p=p+2;
 	}
+	
 	while(1){
 		if((*p)==' ') {
                     p = p + 1;
 		    continue;
                 }
+		if ((*p) == '+'){
+			++p;
+			continue;
+		}
+
+		if ((*p) == '-'){
+			++p;
+			positive = 0;
+			continue;
+		}
+
 		if((*p)==0)
 			break;
 		output->threshold=output->threshold*10+((*p)-'0');
 		p=p+1;
 	}
+
+	if (!positive) output->threshold = - output->threshold;
 	free(single_query);
 	return output;
 }
@@ -80,9 +96,9 @@ int pp_query_acceptor(struct pp_instance_t* instance, name_to_value_t F, void* r
 	if(raw_data==0)
 		return 1;
 	data = (struct pp_query_t*)raw_data;
-    if(strcmp(data->varname,"true")==0)
-        return 1;
 	x = F(instance,data->varname);
+
+//	fprintf(stderr, "pp_query_acceptor %s, op = %d, val = %f, threshold = %f\n", data->varname, data->compare, x, data->threshold);
 	if(data->compare==PPPL_COMPARE_EQ)
 		result=(x==data->threshold);
 	if(data->compare==PPPL_COMPARE_NEQ)

@@ -21,6 +21,8 @@
 #include <math.h>
 #include <limits.h>
 
+#define FLOAT_ERR 1e-4
+
 /************************************** Base Random Functions ******************************************/
 
 /* Generate 0 <= x <= 1; */
@@ -54,15 +56,29 @@ float flip(float p)
     return 0;
 }
 
+float flip_logprob(float value, float p){
+	if (fabs(value) < FLOAT_ERR) return log(1 - p);
+	return log(p);
+}
+
 float flipD()
 {
     return flip(0.5);
+}
+
+float flipD_logprob(float value){
+	return flip_logprob(value, 0.5);
 }
 
 float log_flip(float p)
 {
     if (log(randomL()) < p) return 1;
     return 0;
+}
+
+float log_flip_logprob(float value, float p) {
+	if (fabs(value) < FLOAT_ERR) return log(1 - exp(p));
+	return p;
 }
 
 /************************************** Multinomial ******************************************/

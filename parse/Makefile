@@ -14,7 +14,6 @@ test: test.exe
 
 test.exe: test.c parse.o
 	$(CC) test.c parse.o -o test.exe
-	
 
 clean:
 	rm -rf *.o *.exe *.dSYM

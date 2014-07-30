@@ -3,6 +3,8 @@
 
 #include "../defs.h"
 
+extern int g_sample_iterations;
+
 struct pp_trace_store_t {
 	struct pp_instance_t* instance;
     int num_iters;
@@ -22,9 +24,18 @@ float getcomp(struct BNVertexCompute* vertexComp);
 
 /************************************** Sample Functions ******************************************/
 
+float randomC();
+float randomR();
+float randomL();
+
 float flip(float p);
+float flip_logprob(float value, float p);
+
 float flipD();
+float flipD_logprob(float value);
+
 float log_flip(float p);
+float log_flip_logprob(float value, float p);
 
 float multinomial(float theta[], int n);
 float multinomial_logprob(float m, float theta[], int n);
@@ -33,7 +44,7 @@ float uniform(float low, float high);
 float uniformDiscrete(int low, int high);
 
 float gaussian(float mu, float sigma);
-float guassian_logprob(float x, float mu, float sigma);
+float gaussian_logprob(float x, float mu, float sigma);
 
 float gamma1(float a, float b);
 float gamma_logprob(float x, float a, float b);

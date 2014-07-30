@@ -15,7 +15,7 @@ int main()
     state = pp_new_state();
     printf("> state created\n");
 
-    pp_load_file(state, "parse/models/flip.model");
+    pp_load_file(state, "../parse/models/flip.model");
     printf("> file loaded\n");
 
     instance = pp_new_instance(state, "flip_example", 0);
@@ -27,7 +27,7 @@ int main()
     traces = pp_sample(instance, query);
     printf("> traces sampled\n");
 
-    query = pp_compile_query(instance, "flip==1");
+    query = pp_compile_query(instance, "flip == 1");
     printf("> query compiled\n");
 
     pp_get_result(traces, query, &result);  /* "get_result" may not be a good name */

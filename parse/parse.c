@@ -362,6 +362,18 @@ const char* pp_instance_vertex_name(struct pp_instance_t* instance, int i)
     return vertex_name->data;
 }
 
+/**
+ *	Get the number of the vertex.
+ */
+int pp_instance_find_num_of_vertex(struct pp_instance_t* instance, struct BNVertex* vertex) {
+	struct list_entry_t* entry = instance->vertices->entry;
+	int num = 0;
+
+	for ( ; entry && entry->data != vertex; entry = entry->next, ++num ) ;
+
+	return (entry) ? num : -1;
+}
+
 static int add_models(struct pp_state_t* state, struct ModelsNode* models)
 {
     struct model_map_t* model_map;
@@ -1852,11 +1864,23 @@ static struct BNVertex* compute_variable(struct VariableNode* variable, struct m
 {
 
     const char* variable_string;
-    symbol_t symbol;
+	symbol_t symbol;
+
+	struct BNVertex* variable_vertex;
+	struct BNVertexComputeUnary* vertex;
 
     variable_string = variable_to_string(variable, model_param_map);
     symbol = symbol_table_lookup_symbol(node_symbol_table(variable), variable_string);
-    return variable_vertex_map_get(variable_vertex_map, symbol);
+    variable_vertex = variable_vertex_map_get(variable_vertex_map, symbol);
+
+	/* copy the value in case of multiple samples drawn from the same distribution */
+	vertex = malloc(sizeof(struct BNVertexComputeUnary));
+	vertex->super.super.type = BNV_COMPU;
+	vertex->super.type = BNVC_UNARY;
+	vertex->primary = variable_vertex;
+	vertex->op = UNARY_POS;
+
+	return (struct BNVertex*)vertex;
 }
 
 static struct BNVertex* compute_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map,

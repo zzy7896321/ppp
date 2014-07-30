@@ -20,6 +20,11 @@ Get the name of the i-th vertex.
 */
 const char* pp_instance_vertex_name(struct pp_instance_t*, int i);
 
+/**
+ *	Get the number of the vertex. -1 if not found.
+ */
+int pp_instance_find_num_of_vertex(struct pp_instance_t*, struct BNVertex* vertex);
+
 /* Define common types here */
 
 typedef float (*name_to_value_t)(struct pp_instance_t* instance, const char* name);
@@ -148,7 +153,8 @@ struct BNVertexComputeUnary /* extends BNVertexCompute */
     struct BNVertexCompute super;
     struct BNVertex* primary;
     enum {
-        UNARY_NEG
+        UNARY_NEG,
+		UNARY_POS
     } op;
 };
 

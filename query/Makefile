@@ -1,4 +1,4 @@
-CC = gcc -Wall -g -ansi -pedantic-errors
+CC = gcc -Wall -g -ansi -pedantic-errors -std=gnu99
 
 query.o: query.h query.c
 	$(CC) -c query.c -o query.o
