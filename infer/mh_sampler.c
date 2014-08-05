@@ -78,9 +78,19 @@ int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor,
 			break;
 
 		default:
+		
+			new_sample = uniform(sampler->value[erp_id] - 1, sampler->value[erp_id] + 1);
+			F = R = 0;
+
+			//new_sample = uniform(sampler->value[erp_id] - fabs(sampler->value[erp_id]) / 2 - 1, 
+				//	sampler->value[erp_id] + fabs(sampler->value[erp_id] / 2)) + 1;
+			//F = -log(fabs(sampler->value[erp_id]) + 2);
+			//R = -log(fabs(new_sample) + 2);
 			
-			//new_sample = uniform(sampler->value[erp_id] - 1, sampler->value[erp_id] + 1);
-			new_sample = gaussian(sampler->value[erp_id], 1);
+			
+			//new_sample = gaussian(sampler->value[erp_id], 1 + sampler->value[erp_id] * sampler->value[erp_id]);
+			//F = gaussian_logprob(new_sample, sampler->value[erp_id], 1 + sampler->value[erp_id] * sampler->value[erp_id]);
+			//R = gaussian_logprob(sampler->value[erp_id], new_sample, 1 + new_sample * new_sample);
 
 			if (vertexDraw->type == GAUSSIAN) {
 				assert(sampler->param[erp_id]);
@@ -92,9 +102,7 @@ int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor,
 				new_ll = gamma_logprob(new_sample, sampler->param[erp_id][0], sampler->param[erp_id][1]);
 			}
 
-			F = gaussian_logprob(new_sample, sampler->value[erp_id], 1);
-			R = gaussian_logprob(sampler->value[erp_id], new_sample, 1);
-			//F = R = 0;
+			
 			break;
 		}
 		
@@ -115,7 +123,7 @@ int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor,
 			}
 		/* debug output */
 
-		if (log(randomR()) < acceptance_rate) {
+		if (random_value < acceptance_rate) {
 			mh_sampler_accept_update(sampler);
 		}
 
@@ -123,7 +131,7 @@ int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor,
 			mh_sampler_discard_update(sampler);
 		}
 
-		/* debug output */
+		/* debug output 
 			for (int i = 0; i < sampler->num_of_erps; ++i) {
 				fprintf(transition_out, "%f ", sampler->value[sampler->erps[i]]);
 			}
@@ -176,19 +184,19 @@ mh_sampler_t* mh_sampler_init(struct pp_instance_t* instance) {
 
 	num_of_erps = 0;
 	for (int i = 0; i < n; ++i){
-		printf("%d: ", i);
-		dump_vertex(pp_instance_vertex(instance, i));
+		//printf("%d: ", i);
+		//dump_vertex(pp_instance_vertex(instance, i));
 
 		if (pp_instance_vertex(instance, i)->type == BNV_DRAW){
 			sampler->erps[num_of_erps++] = i;
 		}
 	}
 
-	printf("erps:\n");	
+	/*printf("erps:\n");	
 	for (int i = 0; i < num_of_erps; ++i) {
 		printf("%d: ", sampler->erps[i]);
 		dump_vertex(pp_instance_vertex(instance, sampler->erps[i]));
-	}
+	}*/
 
 	sampler->new_value = malloc(sizeof(float) * n);
 	sampler->new_log_likelihood = malloc(sizeof(float) * n);
@@ -240,6 +248,7 @@ void mh_sampler_trace_update(mh_sampler_t* sampler){
 
 		case BNV_COMPU:
 			vertex->sample = mh_sampler_get_compute(sampler, i, (struct BNVertexCompute*) vertex);
+			sampler->new_value[i] = vertex->sample;
 			break;
 
 		default:
@@ -273,12 +282,8 @@ float mh_sampler_get_sample(mh_sampler_t* sampler, int vertex_index, struct BNVe
 		// a previously sampled value is found
 		
 		if ( ! mh_param_equal(sampler->new_param[vertex_index], current_param, num_of_param)) {
-			sampler->ll_stale += sampler->new_log_likelihood[vertex_index];
-
 			mh_update_param( &(sampler->new_param[vertex_index]), current_param, num_of_param);				
 			sampler->new_log_likelihood[vertex_index] = mh_log_likelihood(vertexDraw, sampler->new_value[vertex_index], current_param);
-
-			sampler->ll_fresh += sampler->new_log_likelihood[vertex_index];
 		}
 	}
 
@@ -428,6 +433,9 @@ void mh_sampler_discard_update(mh_sampler_t* sampler) {
 		struct BNVertex* vertex = (struct BNVertex*) pp_instance_vertex(sampler->instance, i);
 		if (vertex->type == BNV_DRAW) {
 			mh_update_param(&(sampler->new_param[i]), sampler->param[i], mh_number_of_param((struct BNVertexDraw*) vertex));
+			vertex->sample = sampler->value[i];
+		}
+		else if (vertex->type == BNV_COMPU) {
 			vertex->sample = sampler->value[i];
 		}
 	}

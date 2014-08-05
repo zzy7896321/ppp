@@ -78,6 +78,14 @@ struct pp_query_t* pp_compile_query(struct pp_instance_t* instance, const char* 
 
 		if((*p)==0)
 			break;
+		if((*p) == '.') {
+			float decimal = 0.1;
+			for (++p; (*p); ++p) {
+				output->threshold+= decimal * ((*p) - '0');
+				decimal *= 0.1;
+			}
+			break;
+		}
 		output->threshold=output->threshold*10+((*p)-'0');
 		p=p+1;
 	}
@@ -98,7 +106,7 @@ int pp_query_acceptor(struct pp_instance_t* instance, name_to_value_t F, void* r
 	data = (struct pp_query_t*)raw_data;
 	x = F(instance,data->varname);
 
-//	fprintf(stderr, "pp_query_acceptor %s, op = %d, val = %f, threshold = %f\n", data->varname, data->compare, x, data->threshold);
+	/* fprintf(stderr, "pp_query_acceptor %s, op = %d, val = %f, threshold = %f\n", data->varname, data->compare, x, data->threshold); */
 	if(data->compare==PPPL_COMPARE_EQ)
 		result=(x==data->threshold);
 	if(data->compare==PPPL_COMPARE_NEQ)

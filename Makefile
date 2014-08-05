@@ -21,11 +21,11 @@ infer_module:
 	$(MAKE) -C infer
 
 clean:
-	rm -rf libppp.a *.o *.exe *.dSYM
+	-rm -rf libppp.a *.o *.exe *.dSYM
 	$(MAKE) -C parse clean
 	$(MAKE) -C query clean
 	$(MAKE) -C infer clean
-	rm flip
+	-rm flip
 
 flip.exe: flip.c libppp.a
 	$(CC) flip.c libppp.a -o flip.exe -lm
@@ -35,3 +35,6 @@ flip: flip.c libppp.a
 
 simple: simple.c libppp.a
 	mkdir -p bin && ${CC} simple.c libppp.a -o bin/simple -lm
+
+simple2: simple2.c libppp.a
+	mkdir -p bin && ${CC} simple2.c libppp.a -o bin/simple2 -lm
