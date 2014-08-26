@@ -4,8 +4,8 @@ model flip_example() {
     private x1
     private x2
 
-    flip ~ dbern(0.5)
-    x1 ~ dnorm(0, 1)
-    x2 ~ dgamma(1, 1)
-    x = if flip then x1 else x2 + 2
+    f ~ flip(0.5)
+    x1 ~ gaussian(0, 1)
+    x2 ~ gamma(1, 1)
+    x = if f then x1 else x2 + 2
 }

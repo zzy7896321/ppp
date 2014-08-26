@@ -20,8 +20,56 @@
 #include <stdlib.h>
 #include <math.h>
 #include <limits.h>
+#include <string.h>
+#include "erp.h"
 
 #define FLOAT_ERR 1e-4
+
+const char* erp_name(erp_enum_t erp_type) {
+    switch (erp_type) {
+    case ERP_FLIP:
+        return "flip";
+    case ERP_MULTINOMIAL:
+        return "multinomial";
+    case ERP_UNIFORM:
+        return "uniform";
+    case ERP_GAUSSIAN:
+        return "gaussian";
+    case ERP_GAMMA:
+        return "gamma";
+    case ERP_BETA:
+        return "beta";
+    case ERP_BINOMIAL:
+        return "binomial";
+    case ERP_POISSON:
+        return "poisson";
+    case ERP_DIRICHLET:
+        return "dirichlet";
+    }
+
+    return "unknown";
+}
+
+erp_enum_t erp_type(const char* erp_name) {
+    #define ERP_TYPE_CASE(name, type) \
+        if (!strcmp(erp_name, name)) {  \
+            return type;    \
+        }
+
+    ERP_TYPE_CASE("flip", ERP_FLIP)
+    ERP_TYPE_CASE("multinomial", ERP_MULTINOMIAL)
+    ERP_TYPE_CASE("uniform", ERP_UNIFORM)
+    ERP_TYPE_CASE("gaussian", ERP_GAUSSIAN)
+    ERP_TYPE_CASE("gamma", ERP_GAMMA)
+    ERP_TYPE_CASE("beta", ERP_BETA)
+    ERP_TYPE_CASE("binomial", ERP_BINOMIAL)
+    ERP_TYPE_CASE("poisson", ERP_POISSON)
+    ERP_TYPE_CASE("dirichlet", ERP_DIRICHLET)
+
+    #undef ERP_TYPE_CASE
+
+    return ERP_UNKNOWN;
+}
 
 /************************************** Base Random Functions ******************************************/
 
@@ -50,13 +98,13 @@ int Round(float number)
 
 /************************************** Flip ******************************************/
 
-float flip(float p)
+int flip(float p)
 {
     if (randomL() < p) return 1;
     return 0;
 }
 
-float flip_logprob(float value, float p){
+float flip_logprob(int value, float p){
 	if (fabs(value) < FLOAT_ERR) return log(1 - p);
 	return log(p);
 }

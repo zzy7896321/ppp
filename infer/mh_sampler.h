@@ -6,8 +6,8 @@
 #include <string.h>
 #include "../defs.h"
 
-extern int g_burn_in_iterations;
-extern int g_sample_round;
+extern int g_mh_sampler_burn_in_iterations;
+extern int g_mh_sampler_lag;
 
 int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_accept, 
 				name_to_value_t F, void* raw_data,

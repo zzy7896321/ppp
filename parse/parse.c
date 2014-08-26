@@ -1,6 +1,10 @@
 #include "../ppp.h"
 #include "../defs.h"
 #include "parse.h"
+#include "list.h"
+#include "ilist.h"
+#include "symbol_table.h"
+#include "interface.h"
 #include <assert.h>
 #include <ctype.h>
 #include <fcntl.h>
@@ -12,277 +16,18 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-/******************************************************************************
-Pointer list
-******************************************************************************/
+#define DUMP_BUFFER_SIZE 8096
+static char dump_buffer[DUMP_BUFFER_SIZE];
 
-struct list_entry_t
-{
-    void* data;
-    struct list_entry_t* next;
-};
+#define DUMP_CALL(function, ...)  \
+    num_written += function(buffer + num_written, buf_size - num_written, __VA_ARGS__)
 
-struct list_t
-{
-    struct list_entry_t* entry;
-};
-
-static struct list_t* new_list()
-{
-    struct list_t* list;
-    list = malloc(sizeof(struct list_t));
-    list->entry = 0;
-    return list;
-}
-
-static void list_entry_append(struct list_entry_t* list_entry, void* data)
-{
-    assert(list_entry);
-    if (list_entry->next)
-        list_entry_append(list_entry->next, data);
-    else {
-        list_entry->next = malloc(sizeof(struct list_entry_t));
-        list_entry->next->data = data;
-        list_entry->next->next = 0;
-    }
-}
-
-static void list_append(struct list_t* list, void* data)
-{
-    assert(list);
-    if (list->entry)
-        list_entry_append(list->entry, data);
-    else {
-        list->entry = malloc(sizeof(struct list_entry_t));
-        list->entry->data = data;
-        list->entry->next = 0;
-    }
-}
-
-/******************************************************************************
-Integer list
-******************************************************************************/
-
-struct ilist_entry_t
-{
-    int data;
-    struct ilist_entry_t* next;
-};
-
-struct ilist_t
-{
-    struct ilist_entry_t* entry;
-};
-
-static struct ilist_t* new_ilist()
-{
-    struct ilist_t* list;
-    list = malloc(sizeof(struct ilist_t));
-    list->entry = 0;
-    return list;
-}
-
-static void ilist_entry_append(struct ilist_entry_t* list_entry, int data)
-{
-    assert(list_entry);
-    if (list_entry->next)
-        ilist_entry_append(list_entry->next, data);
-    else {
-        list_entry->next = malloc(sizeof(struct ilist_entry_t));
-        list_entry->next->data = data;
-        list_entry->next->next = 0;
-    }
-}
-
-static void ilist_append(struct ilist_t* list, int data)
-{
-    assert(list);
-    if (list->entry)
-        ilist_entry_append(list->entry, data);
-    else {
-        list->entry = malloc(sizeof(struct ilist_entry_t));
-        list->entry->data = data;
-        list->entry->next = 0;
-    }
-}
-
-/******************************************************************************
-Forward declarations
-******************************************************************************/
-
-/* FIXME should allow arbitrary length */
-#define MAX_NAME_SIZE 250
-#define MAX_INTEGER_VALUE_SIZE 10
-
-typedef unsigned int symbol_t;
-
-struct symbol_table_entry_t
-{
-    char string[MAX_NAME_SIZE];
-    symbol_t symbol;
-    struct symbol_table_entry_t* next;
-};
-
-struct symbol_table_t
-{
-    symbol_t last_symbol;
-    struct symbol_table_entry_t* entry;
-};
-
-static struct symbol_table_t* new_symbol_table()
-{
-    struct symbol_table_t* symbol_table;
-
-    symbol_table = malloc(sizeof(struct symbol_table_t));
-    symbol_table->last_symbol = 0;
-    symbol_table->entry = 0;
-
-    return symbol_table;
-}
-
-static struct symbol_table_entry_t* symbol_table_find_entry_by_string(struct symbol_table_t* symbol_table, const char* string)
-{
-    struct symbol_table_entry_t* table_entry;
-
-    table_entry = symbol_table->entry;
-    while (table_entry) {
-        if (strcmp(table_entry->string, string) == 0) {
-            return table_entry;
-        }
-        table_entry = table_entry->next;
-    }
-    return 0;
-}
-
-static symbol_t symbol_table_lookup_symbol(struct symbol_table_t* symbol_table, const char* string)
-{
-    struct symbol_table_entry_t* table_entry;
-
-    table_entry = symbol_table_find_entry_by_string(symbol_table, string);
-    if (table_entry)
-        return table_entry->symbol;
-
-    /* entry not found, create a new entry */
-    table_entry = malloc(sizeof(struct symbol_table_entry_t));
-    strcpy(table_entry->string, string);
-    table_entry->symbol = symbol_table->last_symbol + 1;
-    table_entry->next = symbol_table->entry;
-
-    symbol_table->last_symbol = table_entry->symbol;
-    symbol_table->entry = table_entry;
-
-    fprintf(stderr, "symbol_table_lookup_symbol (%d): create a new entry (%s, %u)\n", __LINE__, string, table_entry->symbol);
-    return table_entry->symbol;
-}
-
-static struct symbol_table_entry_t* symbol_table_find_entry_by_symbol(struct symbol_table_t* symbol_table, symbol_t symbol)
-{
-    struct symbol_table_entry_t* table_entry;
-
-    table_entry = symbol_table->entry;
-    while (table_entry) {
-        if (table_entry->symbol == symbol) {
-            return table_entry;
-        }
-        table_entry = table_entry->next;
-    }
-    return 0;
-}
-
-struct ParserState;
-struct ModelNode;
-struct ModelParamsNode;
-struct DeclsNode;
-struct StmtsNode;
-struct DeclNode;
-struct PublicDeclNode;
-struct PrivateDeclNode;
-struct StmtNode;
-struct DrawStmtNode;
-struct LetStmtNode;
-struct ForStmtNode;
-struct ExprSeqNode;
-struct ExprNode;
-struct IfExprNode;
-struct NewExprNode;
-struct BinaryExprNode;
-struct PrimaryNode;
-struct VariableNode;
-struct NameVarNode;
-struct FieldVarNode;
-struct IndexVarNode;
-struct NumericalValueNode;
-struct RealValueNode;
-struct IntegerValueNode;
-
-static struct ModelsNode* parse_models(struct ParserState* ps);
-static struct ModelNode* parse_model(struct ParserState* ps);
-static struct ModelParamsNode* parse_model_params(struct ParserState* ps);
-static struct DeclsNode* parse_decls(struct ParserState* ps);
-static struct StmtsNode* parse_stmts(struct ParserState* ps);
-static struct DeclNode* parse_decl(struct ParserState* ps);
-static struct PublicDeclNode* parse_public_decl(struct ParserState* ps);
-static struct PrivateDeclNode* parse_private_decl(struct ParserState* ps);
-static struct StmtNode* parse_stmt(struct ParserState* ps);
-static struct ForStmtNode* parse_for_stmt(struct ParserState* ps);
-static struct ExprSeqNode* parse_expr_seq(struct ParserState* ps);
-static struct ExprNode* parse_expr(struct ParserState* ps);
-static struct ExprNode* parse_add_expr(struct ParserState* ps);
-static struct ExprNode* parse_term(struct ParserState* ps);
-static struct PrimaryNode* parse_primary(struct ParserState* ps);
-static struct VariableNode* parse_variable(struct ParserState* ps);
-static struct VariableNode* parse_variable1(struct ParserState* ps, symbol_t name);
-static struct NumericalValueNode* parse_numerical_value(struct ParserState* ps);
-static struct IntegerValueNode* parse_integer_value(struct ParserState* ps);
-static symbol_t parse_name(struct ParserState* ps);
-
-static struct ModelsNode* parse_file1(const char* filename, struct symbol_table_t* symbol_table);
-
-static int dump_model(struct ModelNode* model);
-static int dump_model_params(struct ModelParamsNode* model_params);
-static int dump_decls(struct DeclsNode* decls);
-static int dump_stmts(struct StmtsNode* stmts);
-static int dump_decl(struct DeclNode* decl);
-static int dump_public_decl(struct PublicDeclNode* public_decl);
-static int dump_private_decl(struct PrivateDeclNode* private_decl);
-static int dump_stmt(struct StmtNode* stmt);
-static int dump_draw_stmt(struct DrawStmtNode* draw_stmt);
-static int dump_let_stmt(struct LetStmtNode* let_stmt);
-static int dump_for_stmt(struct ForStmtNode* for_stmt);
-static int dump_expr_seq(struct ExprSeqNode* expr_seq);
-static int dump_expr(struct ExprNode* expr);
-static int dump_if_expr(struct IfExprNode* if_expr);
-static int dump_new_expr(struct NewExprNode* new_expr);
-static int dump_binary_expr(struct BinaryExprNode* expr);
-static int dump_primary(struct PrimaryNode* primary);
-static int dump_variable(struct VariableNode* variable);
-static int dump_name_var(struct NameVarNode* name_var);
-static int dump_field_var(struct FieldVarNode* field_var);
-static int dump_index_var(struct IndexVarNode* index_var);
-static int dump_numerical_value(struct NumericalValueNode* numerical_value);
-static int dump_real_value(struct RealValueNode* real_value);
-static int dump_integer_value(struct IntegerValueNode* integer_value);
-static int dump_name(symbol_t name, struct symbol_table_t* symbol_table);
-
-struct ParserState
-{
-    struct symbol_table_t* symbol_table;
-    int pointer;
-    int program_length;
-    const char* program;
-};
-
-struct CommonNode
-{
-    struct symbol_table_t* symbol_table;
-};
-
-static struct symbol_table_t* node_symbol_table(void* any)
+symbol_table_t* node_symbol_table(void* any)
 {
     return ((struct CommonNode*)any)->symbol_table;
 }
 
-static void* new_node(size_t size, struct ParserState* ps)
+void* new_node(size_t size, ParserState* ps)
 {
     struct CommonNode* node;
     node = malloc(size);
@@ -290,196 +35,21 @@ static void* new_node(size_t size, struct ParserState* ps)
     return node;
 }
 
-struct ModelsNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    struct ModelNode* model;
-    struct ModelsNode* models;
-};
-
-struct ModelNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    symbol_t name;
-    struct ModelParamsNode* params;
-    struct DeclsNode* decls;
-    struct StmtsNode* stmts;
-};
-
-/******************************************************************************
-Module interfaces
-******************************************************************************/
-
-struct model_map_t
-{
-    symbol_t model_name;
-    struct ModelNode* model;
-    struct model_map_t* next;
-};
-
-struct pp_state_t
-{
-    struct symbol_table_t* symbol_table;
-    struct model_map_t* model_map;
-};
-
-struct pp_instance_t
-{
-    int n;
-    struct list_t* vertices;
-    struct list_t* vertex_names;
-};
-
-/**
-Get total number of vertices.
-*/
-int pp_instance_num_vertices(struct pp_instance_t* instance)
-{
-    return instance->n;
-}
-
-/**
-Get the i-th vertex.
-*/
-struct BNVertex* pp_instance_vertex(struct pp_instance_t* instance, int i)
-{
-    struct list_entry_t* vertex;
-    vertex = instance->vertices->entry;
-    while (i--)
-        vertex = vertex->next;
-    return vertex->data;
-}
-
-/**
-Get the name of the i-th vertex.
-*/
-const char* pp_instance_vertex_name(struct pp_instance_t* instance, int i)
-{
-    struct list_entry_t* vertex_name;
-    vertex_name = instance->vertex_names->entry;
-    while (i--)
-        vertex_name = vertex_name->next;
-    return vertex_name->data;
-}
-
-/**
- *	Get the number of the vertex.
- */
-int pp_instance_find_num_of_vertex(struct pp_instance_t* instance, struct BNVertex* vertex) {
-	struct list_entry_t* entry = instance->vertices->entry;
-	int num = 0;
-
-	for ( ; entry && entry->data != vertex; entry = entry->next, ++num ) ;
-
-	return (entry) ? num : -1;
-}
-
-static int add_models(struct pp_state_t* state, struct ModelsNode* models)
-{
-    struct model_map_t* model_map;
-
-    if (!models) return 0;
-
-    model_map = malloc(sizeof(struct model_map_t));
-    model_map->model_name = models->model->name;
-    model_map->model = models->model;
-    model_map->next = state->model_map;
-
-    state->model_map = model_map;
-
-    return add_models(state, models->models);
-}
-
-static struct ModelNode* model_map_find(struct model_map_t* model_map,
-                                        struct symbol_table_t* symbol_table, const char* model_name)
-{
-    struct symbol_table_entry_t* table_entry;
-
-    table_entry = symbol_table_find_entry_by_string(symbol_table, model_name);
-    if (!table_entry) return 0;
-
-    while (model_map)
-        if (model_map->model_name == table_entry->symbol)
-            return model_map->model;
-        else
-            model_map = model_map->next;
-
-    return 0;
-}
-
-struct pp_state_t* pp_new_state()
-{
-    struct pp_state_t* state;
-
-    srand(time(NULL));
-    state = malloc(sizeof(struct pp_state_t));
-    state->symbol_table = new_symbol_table();
-    state->model_map = 0;
-
-    return state;
-}
-
-int pp_free(struct pp_state_t* state)
-{
-    /* FIXME free associated memory here */
-    free(state);
-    return 0;
-}
-
-int pp_load_file(struct pp_state_t* state, const char* filename)
-{
-    struct ModelsNode* models = parse_file1(filename, state->symbol_table);
-    return add_models(state, models);
-}
-
-/* forward declaration */
-static void init_instance(struct ModelNode* model, float* model_params, struct pp_instance_t* instance);
-
-struct pp_instance_t* pp_new_instance(struct pp_state_t* state, const char* model_name, float* model_params)
-{
-    struct ModelNode* model;
-    struct pp_instance_t* instance;
-
-    model = model_map_find(state->model_map, state->symbol_table, model_name);
-    if (!model) return 0;
-
-    instance = malloc(sizeof(struct pp_instance_t));
-    init_instance(model, model_params, instance);
-
-    return instance;
-}
-
-float pp_name_to_value(struct pp_instance_t* instance, const char* name)
-{
-    struct list_entry_t* vertex;
-    struct list_entry_t* vertex_name;
-
-    vertex = instance->vertices->entry;
-    vertex_name = instance->vertex_names->entry;
-    while (vertex && vertex_name)
-        if (strcmp((const char*)(vertex_name->data), name) == 0)
-            return ((struct BNVertex*)(vertex->data))->sample;
-        else
-            vertex = vertex->next, vertex_name = vertex_name->next;
-
-    fprintf(stderr, "pp_name_to_value: vertex %s missing\n", name);
-    return 0;
-}
 
 /******************************************************************************
 Below is the parser
 ******************************************************************************/
 
 /* #define debug(fmt, arg) fprintf(stderr, fmt, arg) */
-#define debug(fmt, arg) do{}while(0)
+#define debug(fmt, arg) do{}while(0) 
 
-static int peek1(struct ParserState* ps, int offset)
+int peek1(struct ParserState* ps, int offset)
 {
     if (ps->pointer + offset >= ps->program_length) return -1;
     return ps->program[ps->pointer + offset];
 }
 
-static int peek(struct ParserState* ps)
+int peek(struct ParserState* ps)
 {
     return peek1(ps, 0);
 }
@@ -489,7 +59,7 @@ static int isnewline(int c)
     return c == '\n' || c == '\r';
 }
 
-static void skip_spaces(struct ParserState* ps)
+void skip_spaces(struct ParserState* ps)
 {
     while (1) {
         while (isspace(peek(ps))) {
@@ -511,7 +81,7 @@ static void skip_spaces(struct ParserState* ps)
     }
 }
 
-static int accept(struct ParserState* ps, const char* token)
+int accept(struct ParserState* ps, const char* token)
 {
     int token_length;
     int i;
@@ -528,8 +98,8 @@ static int accept(struct ParserState* ps, const char* token)
             return 0;
 
     ps->pointer += token_length;
-    return 1;
-}
+    return 1;}
+
 
 static void* failure(const char* message)
 {
@@ -547,9 +117,14 @@ const char* symbol_to_string(struct symbol_table_t* symbol_table, symbol_t symbo
         return 0;
 }
 
-int dump_name(symbol_t name, struct symbol_table_t* symbol_table)
-{
-    return printf("%s", symbol_to_string(symbol_table, name));
+const char* dump_name(symbol_t name, struct symbol_table_t* symbol_table) {
+	dump_name_impl(dump_buffer, DUMP_BUFFER_SIZE, name, symbol_table);
+	return dump_buffer;
+}
+
+int dump_name_impl(char* buffer, int buf_size, symbol_t name, struct symbol_table_t* symbol_table)
+{   
+    return snprintf(buffer, buf_size, "%s", symbol_to_string(symbol_table, name));
 }
 
 static int is_name_first_character(int c)
@@ -580,15 +155,21 @@ symbol_t parse_name(struct ParserState* ps)
     return symbol_table_lookup_symbol(ps->symbol_table, characters);
 }
 
-int dump_models(struct ModelsNode* models)
-{
-    dump_model(models->model);
-    if (models->models)
-        return dump_models(models->models);
-    return 0;
+const char* dump_models(struct ModelsNode* models) {
+	dump_models_impl(dump_buffer, DUMP_BUFFER_SIZE, models);
+	return dump_buffer;
 }
 
-struct ModelsNode* parse_models(struct ParserState* ps)
+int dump_models_impl(char* buffer, int buf_size, struct ModelsNode* models)
+{
+    int num_written = 0;
+    DUMP_CALL(dump_model_impl, models->model);
+    if (models->models)
+        DUMP_CALL(dump_models_impl, models->models);
+    return num_written;
+}
+
+ModelsNode* parse_models(ParserState* ps)
 {
     struct ModelsNode* models;
     struct ModelNode* model;
@@ -605,18 +186,26 @@ struct ModelsNode* parse_models(struct ParserState* ps)
     return models;
 }
 
-int dump_model(struct ModelNode* model)
+const char* dump_model(struct ModelNode* model) {
+	dump_model_impl(dump_buffer, DUMP_BUFFER_SIZE, model);
+	return dump_buffer;
+}
+
+int dump_model_impl(char* buffer, int buf_size, struct ModelNode* model)
 {
-    printf("model ");
-    dump_name(model->name, node_symbol_table(model));
-    printf("(");
+    int num_written = 0;
+    DUMP_CALL(snprintf, "model ");
+    
+    DUMP_CALL(dump_name_impl, model->name, node_symbol_table(model));
+    DUMP_CALL(snprintf, "(");
     if (model->params) {
-      dump_model_params(model->params);
+      DUMP_CALL(dump_model_params_impl, model->params);
     }
-    printf(") {\n");
-    dump_decls(model->decls);
-    dump_stmts(model->stmts);
-    return printf("}\n");
+    DUMP_CALL(snprintf, ") {\n");
+    DUMP_CALL(dump_decls_impl, model->decls);
+    DUMP_CALL(dump_stmts_impl, model->stmts);
+    DUMP_CALL(snprintf, "}\n");
+    return num_written;
 }
 
 struct ModelNode* parse_model(struct ParserState* ps)
@@ -660,21 +249,21 @@ struct ModelNode* parse_model(struct ParserState* ps)
     return model;
 }
 
-struct ModelParamsNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    symbol_t name;
-    struct ModelParamsNode* model_params;
-};
 
-int dump_model_params(struct ModelParamsNode* model_params)
+const char* dump_model_params(struct ModelParamsNode* model_params) {
+	dump_model_params_impl(dump_buffer, DUMP_BUFFER_SIZE, model_params);
+	return dump_buffer;
+}
+
+int dump_model_params_impl(char* buffer, int buf_size, struct ModelParamsNode* model_params)
 {
-    dump_name(model_params->name, node_symbol_table(model_params));
+    int num_written = 0;
+    DUMP_CALL(dump_name_impl, model_params->name, node_symbol_table(model_params));
     if (model_params->model_params) {
-        printf(", ");
-        dump_model_params(model_params->model_params);
+        DUMP_CALL(snprintf, ", ");
+        DUMP_CALL(dump_model_params_impl, model_params->model_params);
     }
-  return 0;
+  return num_written;
 }
 
 struct ModelParamsNode* parse_model_params(struct ParserState* ps)
@@ -699,19 +288,19 @@ struct ModelParamsNode* parse_model_params(struct ParserState* ps)
     return model_params;
 }
 
-struct DeclsNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    struct DeclNode* decl;
-    struct DeclsNode* decls;
-};
 
-int dump_decls(struct DeclsNode* decls)
+const char* dump_decls(struct DeclsNode* decls) {
+	dump_decls_impl(dump_buffer, DUMP_BUFFER_SIZE, decls);
+	return dump_buffer;
+}
+
+int dump_decls_impl(char* buffer, int buf_size, struct DeclsNode* decls)
 {
-    dump_decl(decls->decl);
+    int num_written = 0;
+    DUMP_CALL(dump_decl_impl, decls->decl);
     if (decls->decls)
-        return dump_decls(decls->decls);
-    return 0;
+        DUMP_CALL(dump_decls_impl, decls->decls);
+    return num_written;
 }
 
 struct DeclsNode* parse_decls(struct ParserState* ps)
@@ -731,19 +320,19 @@ struct DeclsNode* parse_decls(struct ParserState* ps)
     return decls;
 }
 
-struct StmtsNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    struct StmtNode* stmt;
-    struct StmtsNode* stmts;
-};
 
-int dump_stmts(struct StmtsNode* stmts)
+const char* dump_stmts(struct StmtsNode* stmts) {
+	dump_stmts_impl(dump_buffer, DUMP_BUFFER_SIZE, stmts);
+	return dump_buffer;
+}
+
+int dump_stmts_impl(char* buffer, int buf_size, struct StmtsNode* stmts)
 {
-    dump_stmt(stmts->stmt);
+    int num_written = 0;
+    DUMP_CALL(dump_stmt_impl, stmts->stmt);
     if (stmts->stmts)
-        return dump_stmts(stmts->stmts);
-    return 0;
+        DUMP_CALL(dump_stmts_impl, stmts->stmts);
+    return num_written;
 }
 
 struct StmtsNode* parse_stmts(struct ParserState* ps)
@@ -763,18 +352,18 @@ struct StmtsNode* parse_stmts(struct ParserState* ps)
     return stmts;
 }
 
-struct DeclNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    enum { PUBLIC_DECL, PRIVATE_DECL } type;
-};
 
-int dump_decl(struct DeclNode* decl)
+const char* dump_decl(struct DeclNode* decl) {
+	dump_decl_impl(dump_buffer, DUMP_BUFFER_SIZE, decl);
+	return dump_buffer;
+}
+
+int dump_decl_impl(char* buffer, int buf_size, struct DeclNode* decl)
 {
     if (decl->type == PUBLIC_DECL)
-        return dump_public_decl((struct PublicDeclNode*)decl);
+        return dump_public_decl_impl(buffer, buf_size, (struct PublicDeclNode*)decl);
     else
-        return dump_private_decl((struct PrivateDeclNode*)decl);
+        return dump_private_decl_impl(buffer, buf_size, (struct PrivateDeclNode*)decl);
 }
 
 struct DeclNode* parse_decl(struct ParserState* ps)
@@ -795,17 +384,19 @@ struct DeclNode* parse_decl(struct ParserState* ps)
     return 0;
 }
 
-struct PublicDeclNode /* extends DeclNode */
-{
-    struct DeclNode super;
-    struct VariableNode* variable;
-};
 
-int dump_public_decl(struct PublicDeclNode* public_decl)
+const char* dump_public_decl(struct PublicDeclNode* public_decl) {
+	dump_public_decl_impl(dump_buffer, DUMP_BUFFER_SIZE, public_decl);
+	return dump_buffer;
+}
+
+int dump_public_decl_impl(char* buffer, int buf_size, struct PublicDeclNode* public_decl)
 {
-    printf("public ");
-    dump_variable(public_decl->variable);
-    return printf("\n");
+    int num_written = 0;
+    DUMP_CALL(snprintf, "public ");
+    DUMP_CALL(dump_variable_impl, public_decl->variable);
+    DUMP_CALL(snprintf, "\n");
+    return num_written;
 }
 
 struct PublicDeclNode* parse_public_decl(struct ParserState* ps)
@@ -825,17 +416,19 @@ struct PublicDeclNode* parse_public_decl(struct ParserState* ps)
     return public_decl;
 }
 
-struct PrivateDeclNode /* extends DeclNode */
-{
-    struct DeclNode super;
-    struct VariableNode* variable;
-};
 
-int dump_private_decl(struct PrivateDeclNode* private_decl)
+const char* dump_private_decl(struct PrivateDeclNode* private_decl) {
+	dump_private_decl_impl(dump_buffer, DUMP_BUFFER_SIZE, private_decl);
+	return dump_buffer;
+}
+
+int dump_private_decl_impl(char* buffer, int buf_size, struct PrivateDeclNode* private_decl)
 {
-    printf("private ");
-    dump_variable(private_decl->variable);
-    return printf("\n");
+    int num_written = 0;
+    DUMP_CALL(snprintf, "private ");
+    DUMP_CALL(dump_variable_impl, private_decl->variable);
+    DUMP_CALL(snprintf, "\n");
+    return num_written;
 }
 
 struct PrivateDeclNode* parse_private_decl(struct ParserState* ps)
@@ -855,55 +448,56 @@ struct PrivateDeclNode* parse_private_decl(struct ParserState* ps)
     return private_decl;
 }
 
-struct StmtNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    enum { DRAW_STMT, LET_STMT, FOR_STMT } type;
-};
 
-int dump_stmt(struct StmtNode* stmt)
+const char* dump_stmt(struct StmtNode* stmt) {
+	dump_stmt_impl(dump_buffer, DUMP_BUFFER_SIZE, stmt);
+	return dump_buffer;
+}
+
+int dump_stmt_impl(char* buffer, int buf_size, struct StmtNode* stmt)
 {
     if (stmt->type == DRAW_STMT)
-        return dump_draw_stmt((struct DrawStmtNode*)stmt);
+        return dump_draw_stmt_impl(buffer, buf_size, (struct DrawStmtNode*)stmt);
     else if (stmt->type == LET_STMT)
-        return dump_let_stmt((struct LetStmtNode*)stmt);
+        return dump_let_stmt_impl(buffer, buf_size, (struct LetStmtNode*)stmt);
     else if (stmt->type == FOR_STMT)
-        return dump_for_stmt((struct ForStmtNode*)stmt);
-    fprintf(stderr, "unrecognized stmt type\n");
-    return 0;
+        return dump_for_stmt_impl(buffer, buf_size, (struct ForStmtNode*)stmt);
+    return snprintf(buffer, buf_size, "unrecognized stmt type\n");
 }
 
-struct DrawStmtNode /* extends StmtNode */
-{
-    struct StmtNode super;
-    struct VariableNode* variable;
-    symbol_t dist;
-    struct ExprSeqNode* expr_seq;
-};
 
-int dump_draw_stmt(struct DrawStmtNode* draw_stmt)
-{
-    dump_variable(draw_stmt->variable);
-    printf(" ~ ");
-    dump_name(draw_stmt->dist, node_symbol_table(draw_stmt));
-    printf("(");
-    dump_expr_seq(draw_stmt->expr_seq);
-    return printf(")\n");
+const char* dump_draw_stmt(struct DrawStmtNode* draw_stmt) {
+	dump_draw_stmt_impl(dump_buffer, DUMP_BUFFER_SIZE, draw_stmt);
+	return dump_buffer;
 }
 
-struct LetStmtNode /* extends StmtNode */
+int dump_draw_stmt_impl(char* buffer, int buf_size, struct DrawStmtNode* draw_stmt)
 {
-    struct StmtNode super;
-    struct VariableNode* variable;
-    struct ExprNode* expr;
-};
+    int num_written = 0;
+    DUMP_CALL(dump_variable_impl, draw_stmt->variable);
+    DUMP_CALL(snprintf, " ~ ");
+    //dump_name(draw_stmt->dist, node_symbol_table(draw_stmt));
+    DUMP_CALL(snprintf, "%s", erp_name(draw_stmt->dist_type)); 
+    DUMP_CALL(snprintf, "(");
+    DUMP_CALL(dump_expr_seq_impl, draw_stmt->expr_seq);
+    DUMP_CALL(snprintf, ")\n");
+    return num_written;
+}
 
-int dump_let_stmt(struct LetStmtNode* let_stmt)
+
+const char* dump_let_stmt(struct LetStmtNode* let_stmt) {
+	dump_let_stmt_impl(dump_buffer, DUMP_BUFFER_SIZE, let_stmt);
+	return dump_buffer;
+}
+
+int dump_let_stmt_impl(char* buffer, int buf_size, struct LetStmtNode* let_stmt)
 {
-    dump_variable(let_stmt->variable);
-    printf(" = ");
-    dump_expr(let_stmt->expr);
-    return printf("\n");
+    int num_written = 0;
+    DUMP_CALL(dump_variable_impl, let_stmt->variable);
+    DUMP_CALL(snprintf, " = ");
+    DUMP_CALL(dump_expr_impl, let_stmt->expr);
+    DUMP_CALL(snprintf, "\n");
+    return num_written;
 }
 
 struct StmtNode* parse_stmt(struct ParserState* ps)
@@ -934,10 +528,13 @@ struct StmtNode* parse_stmt(struct ParserState* ps)
         if (!accept(ps, ")")) return failure("parse_stmt: ) expected");
         debug("%s\n", "parse_stmt: draw_stmt recognized");
 
+        erp_enum_t dist_type = erp_type(symbol_to_string(ps->symbol_table, dist)); 
+
         draw_stmt = new_node(sizeof(struct DrawStmtNode), ps);
         draw_stmt->super.type = DRAW_STMT;
         draw_stmt->variable = variable;
-        draw_stmt->dist = dist;
+        //draw_stmt->dist = dist;
+        draw_stmt->dist_type = dist_type;
         draw_stmt->expr_seq = expr_seq;
 
         return (struct StmtNode*)draw_stmt;
@@ -959,26 +556,24 @@ struct StmtNode* parse_stmt(struct ParserState* ps)
     return 0;
 }
 
-struct ForStmtNode /* extends StmtNode */
-{
-    struct StmtNode super;
-    symbol_t name;
-    struct ExprNode* start_expr;
-    struct ExprNode* end_expr;
-    struct StmtsNode* stmts;
-};
+const char* dump_for_stmt(struct ForStmtNode* for_stmt) {
+	dump_for_stmt_impl(dump_buffer, DUMP_BUFFER_SIZE, for_stmt);
+	return dump_buffer;
+}
 
-int dump_for_stmt(struct ForStmtNode* for_stmt)
+int dump_for_stmt_impl(char* buffer, int buf_size, struct ForStmtNode* for_stmt)
 {
-    printf("for ");
-    dump_name(for_stmt->name, node_symbol_table(for_stmt));
-    printf(" = ");
-    dump_expr(for_stmt->start_expr);
-    printf(" to ");
-    dump_expr(for_stmt->end_expr);
-    printf(" {\n");
-    dump_stmts(for_stmt->stmts);
-    return printf("}\n");
+    int num_written = 0;
+    DUMP_CALL(snprintf, "for ");
+    DUMP_CALL(dump_name_impl, for_stmt->name, node_symbol_table(for_stmt));
+    DUMP_CALL(snprintf, " = ");
+    DUMP_CALL(dump_expr_impl, for_stmt->start_expr);
+    DUMP_CALL(snprintf, " to ");
+    DUMP_CALL(dump_expr_impl, for_stmt->end_expr);
+    DUMP_CALL(snprintf, " {\n");
+    DUMP_CALL(dump_stmts_impl, for_stmt->stmts);
+    DUMP_CALL(snprintf, "}\n");
+    return num_written;
 }
 
 struct ForStmtNode* parse_for_stmt(struct ParserState* ps)
@@ -1030,12 +625,6 @@ struct ForStmtNode* parse_for_stmt(struct ParserState* ps)
     return for_stmt;
 }
 
-struct ExprSeqNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    struct ExprNode* expr;
-    struct ExprSeqNode* expr_seq;
-};
 
 size_t expr_seq_length(struct ExprSeqNode* expr_seq)
 {
@@ -1045,14 +634,20 @@ size_t expr_seq_length(struct ExprSeqNode* expr_seq)
         return 0;
 }
 
-int dump_expr_seq(struct ExprSeqNode* expr_seq)
+const char* dump_expr_seq(struct ExprSeqNode* expr_seq) {
+	dump_expr_seq_impl(dump_buffer, DUMP_BUFFER_SIZE, expr_seq);
+	return dump_buffer;
+}
+
+int dump_expr_seq_impl(char* buffer, int buf_size, struct ExprSeqNode* expr_seq)
 {
-    dump_expr(expr_seq->expr);
+    int num_written = 0;
+    DUMP_CALL(dump_expr_impl, expr_seq->expr);
     if (expr_seq->expr_seq) {
-        printf(", ");
-        return dump_expr_seq(expr_seq->expr_seq);
+        DUMP_CALL(snprintf, ", ");
+        DUMP_CALL(dump_expr_seq_impl, expr_seq->expr_seq);
     }
-    return 0;
+    return num_written;
 }
 
 struct ExprSeqNode* parse_expr_seq(struct ParserState* ps)
@@ -1082,55 +677,56 @@ struct ExprSeqNode* parse_expr_seq(struct ParserState* ps)
     return expr_seq;
 }
 
-struct ExprNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    enum { IF_EXPR, NEW_EXPR, BINARY_EXPR, PRIMARY_EXPR } type;
-};
 
-int dump_expr(struct ExprNode* expr)
+const char* dump_expr(struct ExprNode* expr) {
+	dump_expr_impl(dump_buffer, DUMP_BUFFER_SIZE, expr);
+	return dump_buffer;
+}
+
+int dump_expr_impl(char* buffer, int buf_size, struct ExprNode* expr)
 {
     if (expr->type == IF_EXPR)
-        return dump_if_expr((struct IfExprNode*)expr);
+        return dump_if_expr_impl(buffer, buf_size, (struct IfExprNode*)expr);
     if (expr->type == NEW_EXPR)
-        return dump_new_expr((struct NewExprNode*)expr);
+        return dump_new_expr_impl(buffer, buf_size, (struct NewExprNode*)expr);
     if (expr->type == BINARY_EXPR)
-        return dump_binary_expr((struct BinaryExprNode*)expr);
+        return dump_binary_expr_impl(buffer, buf_size, (struct BinaryExprNode*)expr);
     if (expr->type == PRIMARY_EXPR)
-        return dump_primary((struct PrimaryNode*)expr);
-    fprintf(stderr, "unrecognized expr type\n");
-    return 0;
+        return dump_primary_impl(buffer, buf_size, (struct PrimaryNode*)expr);
+    return snprintf(buffer, buf_size, "unrecognized expr type\n");
 }
 
-struct IfExprNode /* extends ExprNode */
-{
-    struct ExprNode super;
-    struct ExprNode* condition;
-    struct ExprNode* consequent;
-    struct ExprNode* alternative;
-};
 
-int dump_if_expr(struct IfExprNode* if_expr)
-{
-    printf("if ");
-    dump_expr(if_expr->condition);
-    printf(" then ");
-    dump_expr(if_expr->consequent);
-    printf(" else ");
-    return dump_expr(if_expr->alternative);
+const char* dump_if_expr(struct IfExprNode* if_expr) {
+	dump_if_expr_impl(dump_buffer, DUMP_BUFFER_SIZE, if_expr);
+	return dump_buffer;
 }
 
-struct NewExprNode /* extends ExprNode */
+int dump_if_expr_impl(char* buffer, int buf_size, struct IfExprNode* if_expr)
 {
-    struct ExprNode super;
-    symbol_t name;
-};
+    int num_written = 0;
+    DUMP_CALL(snprintf, "if ");
+    DUMP_CALL(dump_expr_impl, if_expr->condition);
+    DUMP_CALL(snprintf, " then ");
+    DUMP_CALL(dump_expr_impl, if_expr->consequent);
+    DUMP_CALL(snprintf, " else ");
+    DUMP_CALL(dump_expr_impl, if_expr->alternative);
+    return num_written;
+}
 
-int dump_new_expr(struct NewExprNode* new_expr)
+
+const char* dump_new_expr(struct NewExprNode* new_expr) {
+	dump_new_expr_impl(dump_buffer, DUMP_BUFFER_SIZE, new_expr);
+	return dump_buffer;
+}
+
+int dump_new_expr_impl(char* buffer, int buf_size, struct NewExprNode* new_expr)
 {
-    printf("new ");
-    dump_name(new_expr->name, node_symbol_table(new_expr));
-    return printf("()");
+    int num_written = 0;
+    DUMP_CALL(snprintf, "new ");
+    DUMP_CALL(dump_name_impl, new_expr->name, node_symbol_table(new_expr));
+    DUMP_CALL(snprintf, "()");
+    return num_written;
 }
 
 struct ExprNode* parse_expr(struct ParserState* ps)
@@ -1177,28 +773,28 @@ struct ExprNode* parse_expr(struct ParserState* ps)
     return parse_add_expr(ps);
 }
 
-struct BinaryExprNode /* extends ExprNode */
-{
-    struct ExprNode super;
-    enum { OP_ADD, OP_SUB, OP_MUL, OP_DIV } op;
-    struct ExprNode* left;
-    struct ExprNode* right;
-};
 
-int dump_binary_expr(struct BinaryExprNode* expr)
+const char* dump_binary_expr(struct BinaryExprNode* expr) {
+	dump_binary_expr_impl(dump_buffer, DUMP_BUFFER_SIZE, expr);
+	return dump_buffer;
+}
+
+int dump_binary_expr_impl(char* buffer, int buf_size, struct BinaryExprNode* expr)
 {
-    dump_expr(expr->left);
+    int num_written = 0;
+    DUMP_CALL(dump_expr_impl, expr->left);
     if (expr->op == OP_ADD)
-        printf(" + ");
+        DUMP_CALL(snprintf, " + ");
     else if (expr->op == OP_SUB)
-        printf(" - ");
+        DUMP_CALL(snprintf, " - ");
     else if (expr->op == OP_MUL)
-        printf(" * ");
+        DUMP_CALL(snprintf, " * ");
     else if (expr->op == OP_DIV)
-        printf(" / ");
+        DUMP_CALL(snprintf, " / ");
     else
-        printf(" ? ");
-    return dump_expr(expr->right);
+        DUMP_CALL(snprintf, " ? ");
+    DUMP_CALL(dump_expr_impl, expr->right);
+    return num_written;
 }
 
 struct ExprNode* parse_add_expr(struct ParserState* ps)
@@ -1277,83 +873,54 @@ struct ExprNode* parse_term(struct ParserState* ps)
     return (struct ExprNode*)primary;
 }
 
-struct PrimaryNode /* extends ExprNode */
-{
-    struct ExprNode super;
-    enum {
-        NUM_EXPR,
-        VAR_EXPR,
-        UNARY_EXPR,
-        GROUP_EXPR,
-        FUNC_EXPR
-    } type;
-};
-
-struct NumExprNode /* extends PrimaryNode */
-{
-    struct PrimaryNode super;
-    struct NumericalValueNode* numerical_value;
-};
-
-struct VarExprNode /* extends PrimaryNode */
-{
-    struct PrimaryNode super;
-    struct VariableNode* variable;
-};
-
-struct UnaryExprNode /* extends PrimaryNode */
-{
-    struct PrimaryNode super;
-    enum { OP_NEG } op;
-    struct PrimaryNode* primary;
-};
-
-struct GroupExprNode /* extends PrimaryNode */
-{
-    struct PrimaryNode super;
-    struct ExprNode* expr;
-};
-
-struct FuncExprNode /* extends PrimrayNode */
-{
-    struct PrimaryNode super;
-    symbol_t name;
-    struct ExprSeqNode* expr_seq;
-};
-
-static int dump_unary_expr(struct UnaryExprNode* unary)
-{
-    if (unary->op == OP_NEG)
-        printf("-");
-    return dump_primary(unary->primary);
+const char* dump_unary_expr(struct UnaryExprNode* unary) {
+	dump_unary_expr_impl(dump_buffer, DUMP_BUFFER_SIZE, unary);
+	return dump_buffer;
 }
 
-int dump_primary(struct PrimaryNode* primary)
+int dump_unary_expr_impl(char* buffer, int buf_size, struct UnaryExprNode* unary)
+{
+    int num_written = 0;
+    if (unary->op == OP_NEG)
+        DUMP_CALL(snprintf, "-");
+    DUMP_CALL(dump_primary_impl, unary->primary);
+    return num_written;
+}
+
+const char* dump_primary(struct PrimaryNode* primary) {
+	dump_primary_impl(dump_buffer, DUMP_BUFFER_SIZE, primary);
+	return dump_buffer;
+}
+
+int dump_primary_impl(char* buffer, int buf_size, struct PrimaryNode* primary)
 {
     if (primary->type == NUM_EXPR)
-        return dump_numerical_value(((struct NumExprNode*)primary)->numerical_value);
+        return dump_numerical_value_impl(buffer, buf_size, ((struct NumExprNode*)primary)->numerical_value);
 
     if (primary->type == VAR_EXPR)
-        return dump_variable(((struct VarExprNode*)primary)->variable);
+        return dump_variable_impl(buffer, buf_size, ((struct VarExprNode*)primary)->variable);
 
     if (primary->type == UNARY_EXPR)
-        return dump_unary_expr((struct UnaryExprNode*)primary);
+        return dump_unary_expr_impl(buffer, buf_size, (struct UnaryExprNode*)primary);
 
     if (primary->type == GROUP_EXPR) {
-        printf("(");
-        dump_expr(((struct GroupExprNode*)primary)->expr);
-        return printf(")");
+        int num_written = 0;
+        DUMP_CALL(snprintf, "(");
+        DUMP_CALL(dump_expr_impl, ((struct GroupExprNode*)primary)->expr);
+        DUMP_CALL(snprintf, ")");
+        return num_written;
     }
 
     if (primary->type == FUNC_EXPR) {
-        dump_name(((struct FuncExprNode*)primary)->name, node_symbol_table(primary));
-        printf("(");
-        dump_expr_seq(((struct FuncExprNode*)primary)->expr_seq);
-        return printf(")");
+        int num_written = 0;
+        DUMP_CALL(dump_name_impl, ((struct FuncExprNode*)primary)->name, node_symbol_table(primary));
+        DUMP_CALL(snprintf, "(");
+        DUMP_CALL(dump_expr_seq_impl, ((struct FuncExprNode*)primary)->expr_seq);
+        DUMP_CALL(snprintf, ")");
+        return num_written;
     }
 
-    fprintf(stderr, "unrecognized primary type\n");
-    return 0;
+    return snprintf(buffer, buf_size, "unrecognized primary type\n");
 }
 
 struct PrimaryNode* parse_primary(struct ParserState* ps)
@@ -1436,62 +1003,62 @@ struct PrimaryNode* parse_primary(struct ParserState* ps)
     return 0;
 }
 
-struct VariableNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    enum { NAME_VAR, FIELD_VAR, INDEX_VAR } type;
-};
 
-int dump_variable(struct VariableNode* variable)
+const char* dump_variable(struct VariableNode* variable) {
+	dump_variable_impl(dump_buffer, DUMP_BUFFER_SIZE, variable);
+	return dump_buffer;
+}
+
+int dump_variable_impl(char* buffer, int buf_size, struct VariableNode* variable)
 {
     if (variable->type == NAME_VAR)
-        return dump_name_var((struct NameVarNode*)variable);
+        return dump_name_var_impl(buffer, buf_size, (struct NameVarNode*)variable);
     if (variable->type == FIELD_VAR)
-        return dump_field_var((struct FieldVarNode*)variable);
+        return dump_field_var_impl(buffer, buf_size, (struct FieldVarNode*)variable);
     if (variable->type == INDEX_VAR)
-        return dump_index_var((struct IndexVarNode*)variable);
-    fprintf(stderr, "unrecognized variable type\n");
-    return 0;
+        return dump_index_var_impl(buffer, buf_size, (struct IndexVarNode*)variable);
+    return snprintf(buffer, buf_size, "unrecognized variable type\n");
 }
 
-struct NameVarNode /* extends VariableNode */
-{
-    struct VariableNode super;
-    symbol_t name;
-};
-
-int dump_name_var(struct NameVarNode* name_var)
-{
-    return dump_name(name_var->name, node_symbol_table(name_var));
+const char* dump_name_var(struct NameVarNode* name_var) {
+	dump_name_var_impl(dump_buffer, DUMP_BUFFER_SIZE, name_var);
+	return dump_buffer;
 }
 
-struct FieldVarNode /* extends VariableNode */
+int dump_name_var_impl(char* buffer, int buf_size, struct NameVarNode* name_var)
 {
-    struct VariableNode super;
-    symbol_t name;
-    symbol_t field_name;
-};
-
-int dump_field_var(struct FieldVarNode* field_var)
-{
-    dump_name(field_var->name, node_symbol_table(field_var));
-    printf(".");
-    return dump_name(field_var->field_name, node_symbol_table(field_var));
+    return dump_name_impl(buffer, buf_size, name_var->name, node_symbol_table(name_var));
 }
 
-struct IndexVarNode /* extends VariableNode */
-{
-    struct VariableNode super;
-    symbol_t name;
-    struct ExprSeqNode* expr_seq;
-};
 
-int dump_index_var(struct IndexVarNode* index_var)
+const char* dump_field_var(struct FieldVarNode* field_var) {
+	dump_field_var_impl(dump_buffer, DUMP_BUFFER_SIZE, field_var);
+	return dump_buffer;
+}
+
+int dump_field_var_impl(char* buffer, int buf_size, struct FieldVarNode* field_var)
 {
-    dump_name(index_var->name, node_symbol_table(index_var));
-    printf("[");
-    dump_expr_seq(index_var->expr_seq);
-    return printf("]");
+    int num_written = 0;
+    DUMP_CALL(dump_name_impl, field_var->name, node_symbol_table(field_var));
+    DUMP_CALL(snprintf, ".");
+    DUMP_CALL(dump_name_impl, field_var->field_name, node_symbol_table(field_var));
+    return num_written;
+}
+
+
+const char* dump_index_var(struct IndexVarNode* index_var) {
+    dump_index_var_impl(dump_buffer, DUMP_BUFFER_SIZE, index_var);
+	return dump_buffer;
+}
+
+int dump_index_var_impl(char* buffer, int buf_size, struct IndexVarNode* index_var)
+{
+    int num_written = 0;
+    DUMP_CALL(dump_name_impl, index_var->name, node_symbol_table(index_var));
+    DUMP_CALL(snprintf, "[");
+    DUMP_CALL(dump_expr_seq_impl, index_var->expr_seq);
+    DUMP_CALL(snprintf, "]");
+    return num_written;
 }
 
 struct VariableNode* parse_variable(struct ParserState* ps)
@@ -1543,53 +1110,66 @@ struct VariableNode* parse_variable1(struct ParserState* ps, symbol_t name)
     return (struct VariableNode*)name_var;
 }
 
-struct NumericalValueNode /* extends CommonNode */
-{
-    struct CommonNode super;
-    enum { REAL_VALUE, INTEGER_VALUE } type;
-};
 
-int dump_numerical_value(struct NumericalValueNode* numerical_value)
-{
-    if (numerical_value->type == REAL_VALUE)
-        return dump_real_value((struct RealValueNode*)numerical_value);
-    if (numerical_value->type == INTEGER_VALUE)
-        return dump_integer_value((struct IntegerValueNode*)numerical_value);
-    fprintf(stderr, "unrecognized numerical value type\n");
-    return 0;
+const char* dump_numerical_value(struct NumericalValueNode* numerical_value) {
+	dump_numerical_value_impl(dump_buffer, DUMP_BUFFER_SIZE, numerical_value);
+	return dump_buffer;
 }
 
-struct RealValueNode /* extends NumericalValueNode */
+int dump_numerical_value_impl(char* buffer, int buf_size, struct NumericalValueNode* numerical_value)
 {
-    struct NumericalValueNode super;
-    struct IntegerValueNode* integer_part;
-    struct IntegerValueNode* fractional;
-};
+    if (numerical_value->type == REAL_VALUE)
+        return dump_real_value_impl(buffer, buf_size, (struct RealValueNode*)numerical_value);
+    if (numerical_value->type == INTEGER_VALUE)
+        return dump_integer_value_impl(buffer, buf_size, (struct IntegerValueNode*)numerical_value);
+    return snprintf(buffer, buf_size, "unrecognized numerical value type\n");
+}
 
-int dump_real_value(struct RealValueNode* real_value)
+
+const char* dump_real_value(struct RealValueNode* real_value) {
+	dump_real_value_impl(dump_buffer, DUMP_BUFFER_SIZE, real_value);
+	return dump_buffer;
+}
+
+int dump_real_value_impl(char* buffer, int buf_size, struct RealValueNode* real_value)
 {
-    dump_integer_value(real_value->integer_part);
+    /*dump_integer_value(real_value->integer_part);
     printf(".");
-    return dump_integer_value(real_value->fractional);
+    return dump_integer_value(real_value->fractional);*/
+    return snprintf(buffer, buf_size, "%f", real_value->value);
 }
 
 struct NumericalValueNode* parse_numerical_value(struct ParserState* ps)
 {
     struct IntegerValueNode* integer_value;
-    struct IntegerValueNode* fractional;
+//    struct IntegerValueNode* fractional;
     struct RealValueNode* real_value;
 
     integer_value = parse_integer_value(ps);
     if (!integer_value) return failure("parse_numerical_value: integer_value expected");
 
     if (accept(ps, ".")) {
-        fractional = parse_integer_value(ps);
-        if (!fractional) return failure("parse_numerical_value: fractional expected");
+        char digits[MAX_INTEGER_VALUE_SIZE+2];
+        int length = 0;
+        digits[length++] = '.';
+        while (length < MAX_INTEGER_VALUE_SIZE && isdigit(peek(ps))) {
+            digits[length++] = peek(ps);
+            ps->pointer++;
+        }
+
+        if (isdigit(peek(ps))) {
+            failure("parse_numerical_value: precision loss");
+            do {ps->pointer++;} while (isdigit(peek(ps))); 
+        }
+
 
         real_value = new_node(sizeof(struct RealValueNode), ps);
         real_value->super.type = REAL_VALUE;
-        real_value->integer_part = integer_value;
-        real_value->fractional = fractional;
+        real_value->value = integer_value->value + atof(digits);
+
+        free(integer_value);
+       // real_value->integer_part = integer_value;
+       // real_value->fractional = fractional;
 
         return (struct NumericalValueNode*)real_value;
     }
@@ -1597,16 +1177,16 @@ struct NumericalValueNode* parse_numerical_value(struct ParserState* ps)
     return (struct NumericalValueNode*)integer_value;
 }
 
-struct IntegerValueNode /* extends NumericalValueNode */
-{
-    struct NumericalValueNode super;
-    int length;
-    char digits[MAX_INTEGER_VALUE_SIZE];
-};
 
-int dump_integer_value(struct IntegerValueNode* integer_value)
+const char* dump_integer_value(struct IntegerValueNode* integer_value) {
+	dump_integer_value_impl(dump_buffer, DUMP_BUFFER_SIZE, integer_value);
+	return dump_buffer;
+}
+
+int dump_integer_value_impl(char* buffer, int buf_size, struct IntegerValueNode* integer_value)
 {
-    return printf("%s", integer_value->digits);
+    return snprintf(buffer, buf_size, "%d", integer_value->value);
+    //return printf("%s", integer_value->digits);
 }
 
 struct IntegerValueNode* parse_integer_value(struct ParserState* ps)
@@ -1617,20 +1197,27 @@ struct IntegerValueNode* parse_integer_value(struct ParserState* ps)
 
     if (!isdigit(peek(ps))) return failure("parse_integer_value: digit expected");
 
-    integer_value = new_node(sizeof(struct IntegerValueNode), ps);
-    integer_value->super.type = INTEGER_VALUE;
-    integer_value->length = 0;
-
+    char digits[MAX_INTEGER_VALUE_SIZE + 1];
+    int length = 0;
     while (isdigit(peek(ps))) {
-        integer_value->digits[integer_value->length++] = peek(ps);
+        digits[length++] = peek(ps);
         ps->pointer++;
     }
-    integer_value->digits[integer_value->length] = '\0';
+    digits[length++] = '\0';
+
+    if (isdigit(peek(ps))) {
+        failure("parse_integer_value: overflow");
+        do { ps->pointer++; } while (isdigit(peek(ps)));
+    }
+
+    integer_value = new_node(sizeof(struct IntegerValueNode), ps);
+    integer_value->super.type = INTEGER_VALUE;
+    integer_value->value = atoi(digits);
 
     return integer_value;
 }
 
-static struct ModelsNode* parse_file1(const char* filename, struct symbol_table_t* symbol_table)
+struct ModelsNode* parse_file1(const char* filename, struct symbol_table_t* symbol_table)
 {
     int fd;
     int len;
@@ -1864,23 +1451,23 @@ static struct BNVertex* compute_variable(struct VariableNode* variable, struct m
 {
 
     const char* variable_string;
-	symbol_t symbol;
+    symbol_t symbol;
 
-	struct BNVertex* variable_vertex;
-	struct BNVertexComputeUnary* vertex;
+    struct BNVertex* variable_vertex;
+    struct BNVertexComputeUnary* vertex;
 
     variable_string = variable_to_string(variable, model_param_map);
     symbol = symbol_table_lookup_symbol(node_symbol_table(variable), variable_string);
     variable_vertex = variable_vertex_map_get(variable_vertex_map, symbol);
 
-	/* copy the value in case of multiple samples drawn from the same distribution */
-	vertex = malloc(sizeof(struct BNVertexComputeUnary));
-	vertex->super.super.type = BNV_COMPU;
-	vertex->super.type = BNVC_UNARY;
-	vertex->primary = variable_vertex;
-	vertex->op = UNARY_POS;
+    /* copy the value in case of multiple samples drawn from the same distribution */
+    vertex = malloc(sizeof(struct BNVertexComputeUnary));
+    vertex->super.super.type = BNV_COMPU;
+    vertex->super.type = BNVC_UNARY;
+    vertex->primary = variable_vertex;
+    vertex->op = UNARY_POS;
 
-	return (struct BNVertex*)vertex;
+    return (struct BNVertex*)vertex;
 }
 
 static struct BNVertex* compute_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map,
@@ -2059,20 +1646,21 @@ static float evaluate_func_expr(struct FuncExprNode* expr, struct model_param_ma
 static float evaluate_integer_value(struct IntegerValueNode* integer_value)
 {
     float value;
-    int i;
-
+/*    int i;
+ 
     value = 0;
     for (i = 0; i < integer_value->length; i++) {
         value *= 10;
         value += integer_value->digits[i] - '0';
-    }
+    } */
+    value = integer_value->value;
     return value;
 }
 
 static float evaluate_real_value(struct RealValueNode* real_value)
 {
     float value;
-    float base;
+/*    float base;
     int i;
 
     value = 0;
@@ -2084,7 +1672,8 @@ static float evaluate_real_value(struct RealValueNode* real_value)
     for (i = 0; i < real_value->fractional->length; i++) {
         base /= 10;
         value += base * (real_value->fractional->digits[i] - '0');
-    }
+    }*/
+    value = real_value->value;
     return value;
 }
 
@@ -2325,22 +1914,35 @@ static void execute_draw_stmt(struct DrawStmtNode* draw_stmt, struct model_param
                               struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
 {
     /* variable ~ dist(expr_seq) */
-    symbol_t dbern;
+/*    symbol_t dbern;
     symbol_t dnorm;
     symbol_t dgamma;
 
     dbern = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dbern");
     dnorm = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dnorm");
-    dgamma = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dgamma");
+    dgamma = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dgamma"); */
 
-    if (draw_stmt->dist == dbern)
+    /*if (draw_stmt->dist == dbern)
         execute_draw_dbern(draw_stmt, model_param_map, variable_vertex_map, instance);
     else if (draw_stmt->dist == dnorm)
         execute_draw_dnorm(draw_stmt, model_param_map, variable_vertex_map, instance);
     else if (draw_stmt->dist == dgamma)
         execute_draw_dgamma(draw_stmt, model_param_map, variable_vertex_map, instance);
     else
+        fprintf(stderr, "execute_draw_stmt (%d): unrecognized distribution", __LINE__);*/
+    switch (draw_stmt->dist_type) {
+    case ERP_FLIP:
+        execute_draw_dbern(draw_stmt, model_param_map, variable_vertex_map, instance);
+        break;
+    case ERP_GAUSSIAN:
+        execute_draw_dnorm(draw_stmt, model_param_map, variable_vertex_map, instance);
+        break;
+    case ERP_GAMMA:
+        execute_draw_dgamma(draw_stmt, model_param_map, variable_vertex_map, instance);
+        break;
+    default:
         fprintf(stderr, "execute_draw_stmt (%d): unrecognized distribution", __LINE__);
+    }
 }
 
 static void execute_let_stmt(struct LetStmtNode* let_stmt, struct model_param_map_t* model_param_map,
@@ -2430,7 +2032,7 @@ static void instantiate_model(struct ModelNode* model, float* model_params,
     execute_stmts(model->stmts, &model_param_map, variable_vertex_map, instance);
 }
 
-static void init_instance(struct ModelNode* model, float* model_params, struct pp_instance_t* instance)
+void init_instance(struct ModelNode* model, float* model_params, struct pp_instance_t* instance)
 {
     struct variable_vertex_map_t variable_vertex_map = {0};
     instance->n = 0;
@@ -2438,3 +2040,5 @@ static void init_instance(struct ModelNode* model, float* model_params, struct p
     instance->vertex_names = new_list();
     instantiate_model(model, model_params, &variable_vertex_map, instance);
 }
+
+#undef DUMP_CALL

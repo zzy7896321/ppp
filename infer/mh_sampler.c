@@ -13,8 +13,8 @@
 	#define ERR_OUTPUT(...) 
 #endif
 
-int g_burn_in_iterations = 0;//2000; temporarily disabled
-int g_sample_round = 100;
+int g_mh_sampler_burn_in_iterations = 0;//2000; temporarily disabled
+int g_mh_sampler_lag = 1;
 
 int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor, 
 				name_to_value_t name_to_value_F, void* raw_data, 
@@ -39,7 +39,7 @@ int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor,
 	}
 	ERR_OUTPUT("\n");
 
-	for (int k = 1; k <= g_sample_iterations + g_burn_in_iterations; ++k) {
+	for (int k = 1; k <= g_sample_iterations + g_mh_sampler_burn_in_iterations; ++k) {
 
 		int erp_id = mh_sampler_get_random_erp(sampler);
 		struct BNVertexDraw* vertexDraw = (struct BNVertexDraw*) pp_instance_vertex(instance, erp_id);
@@ -145,7 +145,7 @@ int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor,
 
 		ERR_OUTPUT("\n");
 
-		if (k >= g_burn_in_iterations) {
+		if (k > g_mh_sampler_burn_in_iterations && k % g_mh_sampler_lag == 0) {
 			if (condition_acceptor(instance, name_to_value_F, raw_data)) {
 				add_trace(instance, add_trace_data);
 			}

@@ -12,7 +12,7 @@ int main(int argc, char** argv)
 
     result = parse_file(argv[1]);
     if (result)
-        dump_models(result);
+        printf("%s", dump_models(result));
     else
         printf("syntax error\n");
     return 0;

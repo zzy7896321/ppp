@@ -37,7 +37,9 @@ typedef int (*vertices_handler_t)(struct pp_instance_t* instance, void* raw_data
 
 float pp_name_to_value(struct pp_instance_t* instance, const char* name);
 
-int pp_query_acceptor(struct pp_instance_t* instance, name_to_value_t F, void* raw_data);
+struct pp_trace_t;
+struct pp_query_t;
+int pp_query_acceptor(struct pp_trace_t* trace, struct pp_query_t* query);
 
 /* BNVertex */
 

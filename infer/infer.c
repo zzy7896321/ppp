@@ -1,12 +1,16 @@
-#include "../ppp.h"
-#include "../defs.h"
+
 #include "infer.h"
-#include "mh_sampler.h"
-#include <math.h>
+#include "../debug.h"
+
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
-int g_sample_iterations = 10000;
+
+unsigned g_sample_iterations = 200;
+char* g_sample_method = "REJECTION";
+sample_function_t g_sample_function = rejection_sampling;
 
 void init_sample_iterations()
 {
@@ -15,163 +19,90 @@ void init_sample_iterations()
         g_sample_iterations = atoi(sample_iterations);
         fprintf(stderr, "init_sample_iterations (%d): g_sample_iterations=%d\n", __LINE__, g_sample_iterations);
     }
+
+    ERR_OUTPUT("SAMPLE_ITERATIONS = %d\n", g_sample_iterations);
 }
 
-struct pp_trace_store_t* pp_sample(struct pp_instance_t* instance, struct pp_query_t* query)
-{
-    int n;
-    struct pp_trace_store_t* traces;
-
-    init_sample_iterations();
-
-    n = pp_instance_num_vertices(instance);
-    traces = malloc(sizeof(struct pp_trace_store_t) + (g_sample_iterations * n * sizeof(float)));
-    traces->instance = instance;
-    traces->num_iters = g_sample_iterations;
-    traces->num_verts = n;
-    traces->num_accepts = 0;
-
-	char* sample_method = getenv("SAMPLE_METHOD");
-	if (sample_method && sample_method[0] == 'R') {
-	    rejection_sampling(instance, pp_query_acceptor, pp_name_to_value, query, trace_store_insert, traces);
+void init_sample_method() {
+	char* sample_method= getenv("SAMPLE_METHOD");
+	if (sample_method) {
+		g_sample_method = sample_method;
 	}
+
+	if (g_sample_method[0] == 'R') {
+		ERR_OUTPUT("SAMPLE_METHOD = Rejection\n");
+		g_sample_function = rejection_sampling;
+	}
+
 	else {
-		mh_sampling(instance, pp_query_acceptor, pp_name_to_value, query, trace_store_insert, traces);
+		ERR_OUTPUT("SAMPLE METHOD = Metropolis-Hastings (unhandled)\n");
+		//g_sample_function = mh_sampling;
+	}
+}
+
+const char* pp_sample_error_string[14] = {
+	"PP_SAMPLE_FUNCTION_NORMAL",
+	"PP_SAMPLE_FUNCTION_MODEL_NOT_FOUND",
+	"PP_SAMPLE_FUNCTION_INVALID_STATEMENT",
+	"PP_SAMPLE_FUNCTION_INVALID_EXPRESSION",
+	"PP_SAMPLE_FUNCTION_NON_SCALAR_TYPE_AS_CONDITION",
+	"PP_SAMPLE_FUNCTION_UNHANDLED",
+	"PP_SAMPLE_FUNCTION_INVALID_OPEARND_TYPE",
+	"PP_SAMPLE_FUNCTION_VECTOR_LENGTH_MISMATCH",
+	"PP_SAMPLE_FUNCTION_DIVISION_BY_ZERO",
+	"PP_SAMPLE_FUNCTION_VARIABLE_NOT_FOUND",
+	"PP_SAMPLE_FUNCTION_SUBSCRIPTING_TO_NON_VECTOR",
+	"PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION",
+	"PP_SAMPLE_FUNCTION_NUMBER_OF_PARAMETER_MISMATCH",
+	"PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE",
+};
+
+struct pp_trace_store_t* pp_sample(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], struct pp_query_t* query) {
+	init_sample_iterations();
+	init_sample_method();
+
+	pp_trace_store_t* traces = new_pp_trace_store(g_sample_iterations);
+	void* internal_data = 0;
+	for (unsigned i = 0; i < g_sample_iterations; ++i) {
+		//ERR_OUTPUT("sample round %d\n", i);
+		int status = g_sample_function(state, model_name, param, query, &internal_data, &(traces->trace[i]));
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			ERR_OUTPUT("error: %s\n", pp_sample_get_error_string(status));
+			pp_trace_store_destroy(traces);
+			return 0;
+		}
+		/*ERR_OUTPUT("sample round %d\n", i);
+		char buffer[8096];
+		pp_trace_dump(traces->trace[i], buffer, 8096);
+		printf(buffer); */
 	}
 
-    return traces;
+	/* clear up */
+	g_sample_function(0, 0, 0, 0, &internal_data, 0);
+
+	return traces;
 }
 
-int pp_get_result(struct pp_trace_store_t* traces, struct pp_query_t* query, float* result)
-{
-    int i, j, n;
-    float count = 0;
-    struct pp_instance_t* instance = traces->instance;
-    n = pp_instance_num_vertices(instance);
-    for (i = 0; i < traces->num_accepts; ++i) {
-        for (j = 0; j < n; ++j) {
-            pp_instance_vertex(instance, j)->sample = traces->t[i * traces->num_verts + j];
-        }
-        if (pp_query_acceptor(instance, pp_name_to_value, query)) ++count;
-    }
-	
-	printf("pp_get_result, count = %f num_accepts = %d\n", count, traces->num_accepts);
+int pp_get_result(pp_trace_store_t* traces, pp_query_t* query, float* result) {
+	if (!result) return 1;
+	if (!traces->n) {
+		*result = 0.0;
+		return 0;
+	}
 
-    *result = count / traces->num_accepts;
-    return 0;
+	int num_traces = traces->n;
+	int accepted_cnt = 0;
+
+	for (unsigned i = 0; i < num_traces; ++i) {
+		/*ERR_OUTPUT("trace %d, 0x%08x:\n", i, traces->trace[i]);
+		char buffer[8096];
+		pp_trace_dump(traces->trace[i], buffer, 8096);
+		printf(buffer); */
+		if (pp_query_acceptor(traces->trace[i], query)) {
+			++accepted_cnt;
+		}
+	}
+
+	*result = (float)(accepted_cnt) / num_traces;
+	return 0;
 }
-
-/* P(X|Y) */
-int pp_infer(struct pp_instance_t* instance, const char* X, const char* Y, float* result)
-{
-    struct pp_query_t* query;
-    struct pp_trace_store_t* traces;
-
-    query = pp_compile_query(instance, Y);
-    traces = pp_sample(instance, query);
-    query = pp_compile_query(instance, X);
-    pp_get_result(traces, query, result);
-
-    return 0;
-}
-
-int rejection_sampling(struct pp_instance_t* instance, acceptor_t condition_accept, 
-                       name_to_value_t F, void* raw_data,
-                       vertices_handler_t add_trace, void* add_trace_data)
-{
-    int k, i, n;
-    n = pp_instance_num_vertices(instance);
-    for (k = 0; k < g_sample_iterations; ++k) {
-        for (i = 0; i < n; ++i) {
-            struct BNVertex* vertex = pp_instance_vertex(instance, i);
-            if (vertex->type == BNV_CONST)
-                vertex->sample = vertex->sample;  /* do nothing */
-            else if (vertex->type == BNV_DRAW)
-                vertex->sample = getsample((struct BNVertexDraw*)vertex);
-            else if (vertex->type == BNV_COMPU)
-                vertex->sample = getcomp((struct BNVertexCompute*)vertex);
-        }
-        if (condition_accept(instance, F, raw_data)) {
-            add_trace(instance, add_trace_data);
-        }
-    }
-    return 0;
-}
-
-int trace_store_insert(struct pp_instance_t* instance, void* raw_data)
-{
-    struct pp_trace_store_t* traces;
-    int i;
-    int n;
-
-    n = pp_instance_num_vertices(instance);
-    traces = (struct pp_trace_store_t*)raw_data;
-    for (i = 0; i < n; ++i) {
-        traces->t[traces->num_accepts * n + i] = pp_instance_vertex(instance, i)->sample;
-    }
-    ++traces->num_accepts;
-    return 0;
-}
-
-float getsample(struct BNVertexDraw* vertexDraw) 
-{
-    switch (vertexDraw->type) {
-        case FLIP: return flip(((struct BNVertexDrawBern*)vertexDraw)->p->sample);
-        case LOG_FLIP: return log_flip(((struct BNVertexDrawBern*)vertexDraw)->p->sample);
-        case GAUSSIAN: {
-            struct BNVertexDrawNorm* vertexNorm = (struct BNVertexDrawNorm*)vertexDraw;
-            return gaussian(vertexNorm->mean->sample, vertexNorm->variance->sample);
-        }
-        case GAMMA: {
-            struct BNVertexDrawGamma* vertexGamma = (struct BNVertexDrawGamma*)vertexDraw;
-            return gamma1(vertexGamma->a->sample, vertexGamma->b->sample);
-        }
-        /* FIXME getsample for more distributions, don't forget mh_sampler.c */
-        default: return 0;
-    }
-}
-
-float getcomp(struct BNVertexCompute* vertexComp) 
-{
-    switch (vertexComp->type) {
-        case BNVC_BINOP: {
-            struct BNVertexComputeBinop* vertexBinop = (struct BNVertexComputeBinop*)vertexComp;
-            switch (vertexBinop->binop) {
-                case BINOP_PLUS:
-                    return vertexBinop->left->sample + vertexBinop->right->sample;
-                case BINOP_SUB:
-                    return vertexBinop->left->sample - vertexBinop->right->sample;
-                case BINOP_MULTI:
-                    return vertexBinop->left->sample * vertexBinop->right->sample;
-                case BINOP_DIV:
-                    return vertexBinop->left->sample / vertexBinop->right->sample;
-            }
-            return 0;
-        }
-        case BNVC_IF: {
-            struct BNVertexComputeIf* vertexIf = (struct BNVertexComputeIf*)vertexComp;
-            if (vertexIf->condition->sample)
-                return vertexIf->consequent->sample;
-            else
-                return vertexIf->alternative->sample;
-        }
-        case BNVC_UNARY: {
-            struct BNVertexComputeUnary* vertex = (struct BNVertexComputeUnary*)vertexComp;
-            if (vertex->op == UNARY_NEG)
-                return -(vertex->primary->sample);
-			if (vertex->op == UNARY_POS)
-				return vertex->primary->sample;
-            return 0;
-        }
-        case BNVC_FUNC: {
-            struct BNVertexComputeFunc* vertex = (struct BNVertexComputeFunc*)vertexComp;
-            if (vertex->func == FUNC_LOG)
-                return log(vertex->args[0]->sample);
-            if (vertex->func == FUNC_EXP)
-                return exp(vertex->args[0]->sample);
-            return 0;
-        }
-        default: return 0;
-    }
-}
-

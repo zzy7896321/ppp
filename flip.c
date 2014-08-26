@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "query/query.h"
+#include "parse/parse.h"
+#include "parse/interface.h"
+
 int main()
 {
     /* use pointers to structs because the client doesn't need to know the struct sizes */
@@ -15,27 +19,31 @@ int main()
     state = pp_new_state();
     printf("> state created\n");
 
-    pp_load_file(state, "../parse/models/flip.model");
+    pp_load_file(state, "parse/models/flip.model");
     printf("> file loaded\n");
+	
+	//ModelNode* model = model_map_find(state->model_map, state->symbol_table, "flip_example");
+	//printf(dump_model(model));
 
-    instance = pp_new_instance(state, "flip_example", 0);
-    printf("> instance created\n");
-
-    query = pp_compile_query(instance, "x>2, x<3");
+    query = pp_compile_query("x>2 x<3");
     printf("> condition compiled\n");
 
-    traces = pp_sample(instance, query);
+
+    traces = pp_sample(state, "flip_example", 0, query);
     printf("> traces sampled\n");
 
-    query = pp_compile_query(instance, "flip == 1");
+    query = pp_compile_query("f== 1");
     printf("> query compiled\n");
 
-    pp_get_result(traces, query, &result);  /* "get_result" may not be a good name */
+    pp_get_result(traces, query, &result);  // "get_result" may not be a good name 
     printf("%f\n", result);
+	
+	printf("last sample:\n");
+	char buffer[8096];
+	pp_trace_dump(traces->trace[traces->n-1], buffer, 8096);
+	printf(buffer); 
 
-    pp_infer(instance, "flip == 1", "x > 2, x < 3", &result);  /* alternative way to get a result */
-    printf("%f\n", result);
-
+	// pp_free is broken
     pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */
 
     return 0;
