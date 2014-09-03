@@ -4,13 +4,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <assert.h>
 
 #define DECLARE_HASH_TABLE(prefix, key_type, value_type)	\
 	typedef struct prefix##_hash_table_t prefix##_hash_table_t;	\
 	typedef struct prefix##_hash_table_node_t prefix##_hash_table_node_t;	\
 	struct prefix##_hash_table_t {	\
 		size_t size;	\
-		size_t capacity;	\
+		size_t capacity;	/* actually capacity - 1 for efficiency reason */	\
 		prefix##_hash_table_node_t* node[];	\
 	};	\
 		\
@@ -31,14 +32,15 @@
 	size_t prefix##_hash_table_size(prefix##_hash_table_t* hash_table);	\
 	size_t prefix##_hash_table_capacity(prefix##_hash_table_t* hash_table);	\
 	void prefix##_hash_table_clear(prefix##_hash_table_t* hash_table);	\
-	int prefix##_hash_table_dump(prefix##_hash_table_t* hash_table, char* buffer, int buf_size);
+	int prefix##_hash_table_dump(prefix##_hash_table_t* hash_table, char* buffer, int buf_size);	\
+	prefix##_hash_table_t* prefix##_hash_table_clone(prefix##_hash_table_t* hash_table);
 
 #define DEFINE_HASH_TABLE(prefix, key_type, value_type)	\
 	prefix##_hash_table_t* new_##prefix##_hash_table(size_t capacity) { \
 		prefix##_hash_table_t* hash_table = malloc(sizeof(prefix##_hash_table_t) + sizeof(prefix##_hash_table_node_t*) * capacity); \
 			\
 		hash_table->size = 0;	\
-		hash_table->capacity = capacity;	\
+		hash_table->capacity = capacity - 1;	\
 		memset(hash_table->node, 0, sizeof(prefix##_hash_table_node_t*) * capacity);	\
 		return hash_table;	\
 	} \
@@ -57,15 +59,15 @@
 		while (node) {	\
 			if (HASH_TABLE_COMPARATOR(key, node->key)) {	\
 				HASH_TABLE_DESTROY_VALUE(node->value);	\
-				node->value = value;	\
+				node->value = HASH_TABLE_CLONE_VALUE(value);	\
 				return 1;	\
 			}	\
 			node = node->next;	\
 		}	\
 			\
 		node = malloc(sizeof(prefix##_hash_table_node_t));	\
-		node->key = key;	\
-		node->value = value;	\
+		node->key = HASH_TABLE_CLONE_KEY(key);	\
+		node->value = HASH_TABLE_CLONE_VALUE(value);	\
 		node->next = hash_table->node[hash];	\
 		hash_table->node[hash] = node;	\
 		++hash_table->size;	\
@@ -89,7 +91,7 @@
 		}	\
 			\
 		node = malloc(sizeof(prefix##_hash_table_node_t));	\
-		node->key = key;	\
+		node->key = HASH_TABLE_CLONE_KEY(key);	\
 		node->value = HASH_TABLE_VALUE_DEFAULT;	\
 		node->next= hash_table->node[hash];	\
 		hash_table->node[hash] = node;	\
@@ -142,12 +144,12 @@
 		return hash_table->size;	\
 	}	\
 	size_t prefix## hash_table_capacity(prefix##_hash_table_t* hash_table) {	\
-		return hash_table->capacity;	\
+		return hash_table->capacity + 1;	\
 	}	\
 		\
 	void prefix##_hash_table_clear(prefix##_hash_table_t* hash_table) {	\
 		prefix##_hash_table_node_t** begin = hash_table->node;	\
-		prefix##_hash_table_node_t** end = begin + hash_table->capacity;	\
+		prefix##_hash_table_node_t** end = begin + hash_table->capacity + 1;	\
 		for (; begin != end; ++begin) {	\
 			prefix##_hash_table_node_t* node = *begin;	\
 				\
@@ -168,18 +170,39 @@
 		if (buf_size <= 0) return -1;	\
 		buffer[0] = '\0';	\
 		int num_written = 0;	\
-		num_written += snprintf(buffer + num_written, buf_size - num_written, #prefix "_hash_table_t, size = %d, capacity = %d\n", hash_table->size, hash_table->capacity);	\
-		for (size_t i = 0; i != hash_table->capacity; ++i) {	\
+		num_written += snprintf(buffer + num_written, buf_size - num_written, #prefix "_hash_table_t, size = %d, capacity = %d\n", hash_table->size, hash_table->capacity + 1);	\
+		for (size_t i = 0; i != hash_table->capacity + 1; ++i) {	\
 			prefix##_hash_table_node_t* node = hash_table->node[i];	\
 			while (node) {	\
-				num_written += HASH_TABLE_KEY_DUMP_FUNCTION(buffer + num_written, buf_size - num_written, node->key);	\
+				num_written += HASH_TABLE_DUMP_KEY(buffer + num_written, buf_size - num_written, node->key);	\
 				num_written += snprintf(buffer + num_written, buf_size - num_written, " = ");	\
-				num_written += HASH_TABLE_VALUE_DUMP_FUNCTION(buffer + num_written, buf_size - num_written, node->value);	\
+				num_written += HASH_TABLE_DUMP_VALUE(buffer + num_written, buf_size - num_written, node->value);	\
 				num_written += snprintf(buffer + num_written, buf_size - num_written, "\n");	\
 				node = node->next;	\
 			}	\
 		}	\
 		return num_written;	\
+	}	\
+		\
+	/* prefix##_hash_table_clone performs deep-copy */	\
+	prefix##_hash_table_t* prefix##_hash_table_clone(prefix##_hash_table_t* hash_table) {	\
+		prefix##_hash_table_t* new_hash_table = new_##prefix##_hash_table(hash_table->capacity + 1);	\
+		for (size_t i = 0; i != hash_table->capacity + 1; ++i) {	\
+			prefix##_hash_table_node_t* node = hash_table->node[i];	\
+			prefix##_hash_table_node_t** new_node_ptr = &(new_hash_table->node[i]);	\
+			while (node) {	\
+				prefix##_hash_table_node_t* new_node = malloc(sizeof(prefix##_hash_table_node_t));	\
+				new_node->key = HASH_TABLE_CLONE_KEY(node->key);	\
+				new_node->value = HASH_TABLE_CLONE_VALUE(node->value);	\
+				new_node->next = 0;	\
+				*new_node_ptr = new_node;	\
+				new_node_ptr = &(new_node->next);		\
+					\
+				node = node->next;	\
+			}	\
+		}	\
+		new_hash_table->size = hash_table->size;	\
+		return new_hash_table;	\
 	}
 
 #endif

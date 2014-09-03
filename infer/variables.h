@@ -5,6 +5,7 @@
 
 typedef struct pp_variable_t {
 	enum {INT, FLOAT, VECTOR} type;
+	float logprob;
 } pp_variable_t;
 
 typedef struct pp_int_t {
@@ -28,6 +29,8 @@ pp_variable_t* new_pp_int(int value);
 pp_variable_t* new_pp_float(float value);
 pp_variable_t* new_pp_vector(size_t capacity);
 
+#define PP_VARIABLE_LOGPROB(pvar) (((pp_variable_t*) pvar)->logprob)
+
 #define PP_VARIABLE_INT_VALUE(pvar) (((pp_int_t*) pvar)->value)
 #define PP_VARIABLE_FLOAT_VALUE(pvar) (((pp_float_t*) pvar)->value)
 
@@ -43,6 +46,8 @@ int pp_variable_to_int(pp_variable_t* variable);
 float pp_variable_to_float(pp_variable_t* variable);
 float* pp_variable_to_float_vector(pp_variable_t* variable);
 int* pp_variable_to_int_vector(pp_variable_t* variable);
+
+int pp_variable_equal(pp_variable_t* lhs, pp_variable_t* rhs);
 
 void pp_variable_destroy(pp_variable_t* variable);
 

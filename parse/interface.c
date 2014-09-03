@@ -5,49 +5,49 @@
 #include <string.h>
 #include <assert.h>
 
-/**
-Get total number of vertices.
-*/
-int pp_instance_num_vertices(struct pp_instance_t* instance)
-{
-    return instance->n;
-}
+// /**
+// Get total number of vertices.
+// */
+// int pp_instance_num_vertices(struct pp_instance_t* instance)
+// {
+//     return instance->n;
+// }
 
-/**
-Get the i-th vertex.
-*/
-struct BNVertex* pp_instance_vertex(struct pp_instance_t* instance, int i)
-{
-    struct list_entry_t* vertex;
-    vertex = instance->vertices->entry;
-    while (i--)
-        vertex = vertex->next;
-    return vertex->data;
-}
+// /**
+// Get the i-th vertex.
+// */
+// struct BNVertex* pp_instance_vertex(struct pp_instance_t* instance, int i)
+// {
+//     struct list_entry_t* vertex;
+//     vertex = instance->vertices->entry;
+//     while (i--)
+//         vertex = vertex->next;
+//     return vertex->data;
+// }
 
-/**
-Get the name of the i-th vertex.
-*/
-const char* pp_instance_vertex_name(struct pp_instance_t* instance, int i)
-{
-    struct list_entry_t* vertex_name;
-    vertex_name = instance->vertex_names->entry;
-    while (i--)
-        vertex_name = vertex_name->next;
-    return vertex_name->data;
-}
+// /**
+// Get the name of the i-th vertex.
+// */
+// const char* pp_instance_vertex_name(struct pp_instance_t* instance, int i)
+// {
+//     struct list_entry_t* vertex_name;
+//     vertex_name = instance->vertex_names->entry;
+//     while (i--)
+//         vertex_name = vertex_name->next;
+//     return vertex_name->data;
+// }
 
-/**
- *	Get the number of the vertex.
- */
-int pp_instance_find_num_of_vertex(struct pp_instance_t* instance, struct BNVertex* vertex) {
-	struct list_entry_t* entry = instance->vertices->entry;
-	int num = 0;
+// *
+//  *	Get the number of the vertex.
+ 
+// int pp_instance_find_num_of_vertex(struct pp_instance_t* instance, struct BNVertex* vertex) {
+// 	struct list_entry_t* entry = instance->vertices->entry;
+// 	int num = 0;
 
-	for ( ; entry && entry->data != vertex; entry = entry->next, ++num ) ;
+// 	for ( ; entry && entry->data != vertex; entry = entry->next, ++num ) ;
 
-	return (entry) ? num : -1;
-}
+// 	return (entry) ? num : -1;
+// }
 
 int add_models(struct pp_state_t* state, struct ModelsNode* models)
 {
@@ -108,35 +108,35 @@ int pp_load_file(struct pp_state_t* state, const char* filename)
 }
 
 /* forward declaration */
-void init_instance(struct ModelNode* model, float* model_params, struct pp_instance_t* instance);
+// void init_instance(struct ModelNode* model, float* model_params, struct pp_instance_t* instance);
 
-struct pp_instance_t* pp_new_instance(struct pp_state_t* state, const char* model_name, float* model_params)
-{
-    struct ModelNode* model;
-    struct pp_instance_t* instance;
+// struct pp_instance_t* pp_new_instance(struct pp_state_t* state, const char* model_name, float* model_params)
+// {
+//     struct ModelNode* model;
+//     struct pp_instance_t* instance;
 
-    model = model_map_find(state->model_map, state->symbol_table, model_name);
-    if (!model) return 0;
+//     model = model_map_find(state->model_map, state->symbol_table, model_name);
+//     if (!model) return 0;
 
-    instance = malloc(sizeof(struct pp_instance_t));
-    init_instance(model, model_params, instance);
+//     instance = malloc(sizeof(struct pp_instance_t));
+//     init_instance(model, model_params, instance);
 
-    return instance;
-}
+//     return instance;
+// }
 
-float pp_name_to_value(struct pp_instance_t* instance, const char* name)
-{
-    struct list_entry_t* vertex;
-    struct list_entry_t* vertex_name;
+// float pp_name_to_value(struct pp_instance_t* instance, const char* name)
+// {
+//     struct list_entry_t* vertex;
+//     struct list_entry_t* vertex_name;
 
-    vertex = instance->vertices->entry;
-    vertex_name = instance->vertex_names->entry;
-    while (vertex && vertex_name)
-        if (strcmp((const char*)(vertex_name->data), name) == 0)
-            return ((struct BNVertex*)(vertex->data))->sample;
-        else
-            vertex = vertex->next, vertex_name = vertex_name->next;
+//     vertex = instance->vertices->entry;
+//     vertex_name = instance->vertex_names->entry;
+//     while (vertex && vertex_name)
+//         if (strcmp((const char*)(vertex_name->data), name) == 0)
+//             return ((struct BNVertex*)(vertex->data))->sample;
+//         else
+//             vertex = vertex->next, vertex_name = vertex_name->next;
 
-    fprintf(stderr, "pp_name_to_value: vertex %s missing\n", name);
-    return 0;
-}
+//     fprintf(stderr, "pp_name_to_value: vertex %s missing\n", name);
+//     return 0;
+// }

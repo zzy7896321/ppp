@@ -1251,794 +1251,794 @@ struct ModelsNode* parse_file(const char* filename)
 Module interfaces
 ******************************************************************************/
 
-struct model_param_map_entry_t
-{
-    symbol_t param_name;
-    float value;
-    struct model_param_map_entry_t* next;
-};
-
-struct model_param_map_t
-{
-    struct model_param_map_entry_t* entry;
-};
-
-static struct model_param_map_entry_t* model_param_map_find_entry(struct model_param_map_t* map, symbol_t symbol)
-{
-    struct model_param_map_entry_t* table_entry;
-
-    table_entry = map->entry;
-    while (table_entry)
-        if (table_entry->param_name == symbol)
-            return table_entry;
-        else
-            table_entry = table_entry->next;
-
-    return 0;
-}
-
-static void model_param_map_put(struct model_param_map_t* model_param_map, symbol_t param_name, float value)
-{
-    struct model_param_map_entry_t* table_entry;
-
-    table_entry = model_param_map_find_entry(model_param_map, param_name);
-    if (table_entry) {
-        table_entry->value = value;
-    } else {
-        table_entry = malloc(sizeof(struct model_param_map_entry_t));
-        table_entry->param_name = param_name;
-        table_entry->value = value;
-        table_entry->next = model_param_map->entry;
-        model_param_map->entry = table_entry;
-    }
-}
-
-static float model_param_map_get(struct model_param_map_t* model_param_map, symbol_t param_name)
-{
-    struct model_param_map_entry_t* table_entry;
-
-    table_entry = model_param_map_find_entry(model_param_map, param_name);
-    if (table_entry)
-        return table_entry->value;
-    else
-        return 0;
-}
-
-struct variable_vertex_map_entry_t
-{
-    symbol_t variable;
-    struct BNVertex* vertex;
-    struct variable_vertex_map_entry_t* next;
-};
-
-struct variable_vertex_map_t
-{
-    struct variable_vertex_map_entry_t* entry;
-};
-
-static struct variable_vertex_map_entry_t* variable_vertex_map_find_entry(struct variable_vertex_map_t* map, symbol_t variable)
-{
-    struct variable_vertex_map_entry_t* table_entry;
-
-    table_entry = map->entry;
-    while (table_entry)
-        if (table_entry->variable == variable)
-            return table_entry;
-        else
-            table_entry = table_entry->next;
-
-    return 0;
-}
-
-static void variable_vertex_map_put(struct variable_vertex_map_t* map, symbol_t variable, struct BNVertex* vertex)
-{
-    struct variable_vertex_map_entry_t* table_entry;
-
-    table_entry = variable_vertex_map_find_entry(map, variable);
-    if (table_entry) {
-        table_entry->vertex = vertex;
-    } else {
-        table_entry = malloc(sizeof(struct variable_vertex_map_entry_t));
-        table_entry->variable = variable;
-        table_entry->vertex = vertex;
-        table_entry->next = map->entry;
-        map->entry = table_entry;
-    }
-}
-
-static struct BNVertex* variable_vertex_map_get(struct variable_vertex_map_t* map, symbol_t variable)
-{
-    struct variable_vertex_map_entry_t* table_entry;
-
-    table_entry = variable_vertex_map_find_entry(map, variable);
-    if (table_entry)
-        return table_entry->vertex;
-    else
-        return 0;
-}
-
-static void instance_append_vertex(struct pp_instance_t* instance, struct BNVertex* vertex, const char* vertex_name)
-{
-    list_append(instance->vertices, vertex);
-    if (vertex_name)
-        list_append(instance->vertex_names, (void*)vertex_name);
-    else
-        /* FIXME should generate unique special names for intermediate results */
-        list_append(instance->vertex_names, "");
-    instance->n++;
-}
-
-/******************************************************************************
-Compute expressions
-******************************************************************************/
-
-static struct BNVertex* compute_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map,
-                                     struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance);
-
-static struct BNVertex* compute_if_expr(struct IfExprNode* expr, struct model_param_map_t* model_param_map,
-                                        struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct BNVertex* condition;
-    struct BNVertex* consequent;
-    struct BNVertex* alternative;
-    struct BNVertexComputeIf* vertex;
-
-    condition = compute_expr(expr->condition, model_param_map, variable_vertex_map, instance);
-    consequent = compute_expr(expr->consequent, model_param_map, variable_vertex_map, instance);
-    alternative = compute_expr(expr->alternative, model_param_map, variable_vertex_map, instance);
-
-    /* FIXME generate special names for intermediate results */
-    instance_append_vertex(instance, condition, 0);
-    instance_append_vertex(instance, consequent, 0);
-    instance_append_vertex(instance, alternative, 0);
-
-    vertex = malloc(sizeof(struct BNVertexComputeIf));
-    vertex->super.super.type = BNV_COMPU;
-    vertex->super.type = BNVC_IF;
-    vertex->condition = condition;
-    vertex->consequent = consequent;
-    vertex->alternative = alternative;
-    return (struct BNVertex*)vertex;
-}
-
-static struct BNVertex* compute_binary_expr(struct BinaryExprNode* expr, struct model_param_map_t* model_param_map,
-                                            struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct BNVertex* left;
-    struct BNVertex* right;
-    struct BNVertexComputeBinop* vertex;
-
-    left = compute_expr(expr->left, model_param_map, variable_vertex_map, instance);
-    right = compute_expr(expr->right, model_param_map, variable_vertex_map, instance);
-
-    instance_append_vertex(instance, left, 0);
-    instance_append_vertex(instance, right, 0);
-
-    vertex = malloc(sizeof(struct BNVertexComputeBinop));
-    vertex->super.super.type = BNV_COMPU;
-    vertex->super.type = BNVC_BINOP;
-    vertex->left = left;
-    vertex->right = right;
-
-    if (expr->op == OP_ADD)
-        vertex->binop = BINOP_PLUS;
-    else if (expr->op == OP_SUB)
-        vertex->binop = BINOP_SUB;
-    else if (expr->op == OP_MUL)
-        vertex->binop = BINOP_MULTI;
-    else if (expr->op == OP_DIV)
-        vertex->binop = BINOP_DIV;
-
-    return (struct BNVertex*)vertex;
-}
-
-static float evaluate_numerical_value(struct NumericalValueNode* numerical_value);
-
-static struct BNVertex* compute_numerical_value(struct NumericalValueNode* numerical_value)
-{
-    struct BNVertex* vertex;
-
-    vertex = malloc(sizeof(struct BNVertex));
-    vertex->type = BNV_CONST;
-    vertex->sample = evaluate_numerical_value(numerical_value);
-    return vertex;
-}
-
-static const char* variable_to_string(struct VariableNode* variable, struct model_param_map_t* model_param_map);
-
-static struct BNVertex* compute_variable(struct VariableNode* variable, struct model_param_map_t* model_param_map,
-                                         struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-
-    const char* variable_string;
-    symbol_t symbol;
-
-    struct BNVertex* variable_vertex;
-    struct BNVertexComputeUnary* vertex;
-
-    variable_string = variable_to_string(variable, model_param_map);
-    symbol = symbol_table_lookup_symbol(node_symbol_table(variable), variable_string);
-    variable_vertex = variable_vertex_map_get(variable_vertex_map, symbol);
-
-    /* copy the value in case of multiple samples drawn from the same distribution */
-    vertex = malloc(sizeof(struct BNVertexComputeUnary));
-    vertex->super.super.type = BNV_COMPU;
-    vertex->super.type = BNVC_UNARY;
-    vertex->primary = variable_vertex;
-    vertex->op = UNARY_POS;
-
-    return (struct BNVertex*)vertex;
-}
-
-static struct BNVertex* compute_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map,
-                                        struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance);
-
-static struct BNVertex* compute_unary_expr(struct UnaryExprNode* expr, struct model_param_map_t* model_param_map,
-                                           struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct BNVertex* primary;
-    struct BNVertexComputeUnary* vertex;
-
-    primary = compute_primary(expr->primary, model_param_map, variable_vertex_map, instance);
-
-    instance_append_vertex(instance, primary, 0);
-
-    vertex = malloc(sizeof(struct BNVertexComputeUnary));
-    vertex->super.super.type = BNV_COMPU;
-    vertex->super.type = BNVC_UNARY;
-    vertex->primary = primary;
-
-    if (expr->op == OP_NEG)
-        vertex->op = UNARY_NEG;
-
-    return (struct BNVertex*)vertex;
-}
-
-static struct BNVertex* compute_func_expr(struct FuncExprNode* expr, struct model_param_map_t* model_param_map,
-                                          struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    symbol_t sym_exp;
-    symbol_t sym_log;
-    struct BNVertex* value;
-    struct BNVertexComputeFunc* vertex;
-
-    sym_exp = symbol_table_lookup_symbol(node_symbol_table(expr), "exp");
-    sym_log = symbol_table_lookup_symbol(node_symbol_table(expr), "log");
-
-    if (expr->name == sym_exp) {
-        assert(expr_seq_length(expr->expr_seq) == 1);
-
-        value = compute_expr(expr->expr_seq->expr, model_param_map, variable_vertex_map, instance);
-        instance_append_vertex(instance, value, 0);
-
-        vertex = malloc(sizeof(struct BNVertexComputeFunc));
-        vertex->super.super.type = BNV_COMPU;
-        vertex->super.type = BNVC_FUNC;
-        vertex->func = FUNC_EXP;
-        vertex->args[0] = value;
-        return (struct BNVertex*)vertex;
-    }
-
-    if (expr->name == sym_log) {
-        assert(expr_seq_length(expr->expr_seq) == 1);
-
-        value = compute_expr(expr->expr_seq->expr, model_param_map, variable_vertex_map, instance);
-        instance_append_vertex(instance, value, 0);
-
-        vertex = malloc(sizeof(struct BNVertexComputeFunc));
-        vertex->super.super.type = BNV_COMPU;
-        vertex->super.type = BNVC_FUNC;
-        vertex->func = FUNC_LOG;
-        vertex->args[0] = value;
-        return (struct BNVertex*)vertex;
-    }
-
-    fprintf(stderr, "compute_func_expr (%d): unrecognized function %s\n", __LINE__, symbol_to_string(node_symbol_table(expr), expr->name));
-    return 0;
-}
-
-static struct BNVertex* compute_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map,
-                                        struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    if (primary->type == NUM_EXPR)
-        return compute_numerical_value(((struct NumExprNode*)primary)->numerical_value);
-    if (primary->type == VAR_EXPR)
-        return compute_variable(((struct VarExprNode*)primary)->variable, model_param_map, variable_vertex_map, instance);
-    if (primary->type == UNARY_EXPR)
-        return compute_unary_expr((struct UnaryExprNode*)primary, model_param_map, variable_vertex_map, instance);
-    if (primary->type == GROUP_EXPR)
-        return compute_expr(((struct GroupExprNode*)primary)->expr, model_param_map, variable_vertex_map, instance);
-    if (primary->type == FUNC_EXPR)
-        return compute_func_expr((struct FuncExprNode*)primary, model_param_map, variable_vertex_map, instance);
-
-    fprintf(stderr, "evaluate_primary (%d): unrecognized type %d\n", __LINE__, primary->type);
-    return 0;
-}
-
-static struct BNVertex* compute_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map,
-                                     struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    if (expr->type == IF_EXPR)
-        return compute_if_expr((struct IfExprNode*)expr, model_param_map, variable_vertex_map, instance);
-    if (expr->type == BINARY_EXPR)
-        return compute_binary_expr((struct BinaryExprNode*)expr, model_param_map, variable_vertex_map, instance);
-    if (expr->type == PRIMARY_EXPR)
-        return compute_primary((struct PrimaryNode*)expr, model_param_map, variable_vertex_map, instance);
-
-    fprintf(stderr, "compute_expr (%d): unrecognized type %d\n", __LINE__, expr->type);
-    return 0;
-}
-
-/******************************************************************************
-Evaluate expressions
-******************************************************************************/
-
-static float evaluate_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map);
-
-static float evaluate_if_expr(struct IfExprNode* expr, struct model_param_map_t* model_param_map)
-{
-    if (evaluate_expr(expr->condition, model_param_map))
-        return evaluate_expr(expr->consequent, model_param_map);
-    else
-        return evaluate_expr(expr->alternative, model_param_map);
-}
-
-static float evaluate_binary_expr(struct BinaryExprNode* expr, struct model_param_map_t* model_param_map)
-{
-    float left;
-    float right;
-
-    left = evaluate_expr(expr->left, model_param_map);
-    right = evaluate_expr(expr->right, model_param_map);
-
-    if (expr->op == OP_ADD)
-        return left + right;
-    if (expr->op == OP_SUB)
-        return left - right;
-    if (expr->op == OP_MUL)
-        return left * right;
-    if (expr->op == OP_DIV)
-        return left / right;
-
-    fprintf(stderr, "evaluate_binary_expr (%d): unrecognized operator %d\n", __LINE__, expr->op);
-    return 0;
-}
-
-static float evaluate_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map);
-
-static float evaluate_unary_expr(struct UnaryExprNode* expr, struct model_param_map_t* model_param_map)
-{
-    float value;
-
-    value = evaluate_primary(expr->primary, model_param_map);
-    if (expr->op == OP_NEG)
-        return -value;
-
-    fprintf(stderr, "evaluate_unary_expr (%d): unrecognized operator %d\n", __LINE__, expr->op);
-    return 0;
-}
-
-static float evaluate_func_expr(struct FuncExprNode* expr, struct model_param_map_t* model_param_map)
-{
-    symbol_t sym_exp;
-    symbol_t sym_log;
-    float value;
-
-    sym_exp = symbol_table_lookup_symbol(node_symbol_table(expr), "exp");
-    sym_log = symbol_table_lookup_symbol(node_symbol_table(expr), "log");
-
-    if (expr->name == sym_exp) {
-        assert(expr_seq_length(expr->expr_seq) == 1);
-        value = evaluate_expr(expr->expr_seq->expr, model_param_map);
-        return exp(value);
-    }
-
-    if (expr->name == sym_log) {
-        assert(expr_seq_length(expr->expr_seq) == 1);
-        value = evaluate_expr(expr->expr_seq->expr, model_param_map);
-        return log(value);
-    }
-
-    fprintf(stderr, "evaluate_func_expr (%d): unrecognized function %s\n", __LINE__, symbol_to_string(node_symbol_table(expr), expr->name));
-    return 0;
-}
-
-static float evaluate_integer_value(struct IntegerValueNode* integer_value)
-{
-    float value;
-/*    int i;
+// struct model_param_map_entry_t
+// {
+//     symbol_t param_name;
+//     float value;
+//     struct model_param_map_entry_t* next;
+// };
+
+// struct model_param_map_t
+// {
+//     struct model_param_map_entry_t* entry;
+// };
+
+// static struct model_param_map_entry_t* model_param_map_find_entry(struct model_param_map_t* map, symbol_t symbol)
+// {
+//     struct model_param_map_entry_t* table_entry;
+
+//     table_entry = map->entry;
+//     while (table_entry)
+//         if (table_entry->param_name == symbol)
+//             return table_entry;
+//         else
+//             table_entry = table_entry->next;
+
+//     return 0;
+// }
+
+// static void model_param_map_put(struct model_param_map_t* model_param_map, symbol_t param_name, float value)
+// {
+//     struct model_param_map_entry_t* table_entry;
+
+//     table_entry = model_param_map_find_entry(model_param_map, param_name);
+//     if (table_entry) {
+//         table_entry->value = value;
+//     } else {
+//         table_entry = malloc(sizeof(struct model_param_map_entry_t));
+//         table_entry->param_name = param_name;
+//         table_entry->value = value;
+//         table_entry->next = model_param_map->entry;
+//         model_param_map->entry = table_entry;
+//     }
+// }
+
+// static float model_param_map_get(struct model_param_map_t* model_param_map, symbol_t param_name)
+// {
+//     struct model_param_map_entry_t* table_entry;
+
+//     table_entry = model_param_map_find_entry(model_param_map, param_name);
+//     if (table_entry)
+//         return table_entry->value;
+//     else
+//         return 0;
+// }
+
+// struct variable_vertex_map_entry_t
+// {
+//     symbol_t variable;
+//     struct BNVertex* vertex;
+//     struct variable_vertex_map_entry_t* next;
+// };
+
+// struct variable_vertex_map_t
+// {
+//     struct variable_vertex_map_entry_t* entry;
+// };
+
+// static struct variable_vertex_map_entry_t* variable_vertex_map_find_entry(struct variable_vertex_map_t* map, symbol_t variable)
+// {
+//     struct variable_vertex_map_entry_t* table_entry;
+
+//     table_entry = map->entry;
+//     while (table_entry)
+//         if (table_entry->variable == variable)
+//             return table_entry;
+//         else
+//             table_entry = table_entry->next;
+
+//     return 0;
+// }
+
+// static void variable_vertex_map_put(struct variable_vertex_map_t* map, symbol_t variable, struct BNVertex* vertex)
+// {
+//     struct variable_vertex_map_entry_t* table_entry;
+
+//     table_entry = variable_vertex_map_find_entry(map, variable);
+//     if (table_entry) {
+//         table_entry->vertex = vertex;
+//     } else {
+//         table_entry = malloc(sizeof(struct variable_vertex_map_entry_t));
+//         table_entry->variable = variable;
+//         table_entry->vertex = vertex;
+//         table_entry->next = map->entry;
+//         map->entry = table_entry;
+//     }
+// }
+
+// static struct BNVertex* variable_vertex_map_get(struct variable_vertex_map_t* map, symbol_t variable)
+// {
+//     struct variable_vertex_map_entry_t* table_entry;
+
+//     table_entry = variable_vertex_map_find_entry(map, variable);
+//     if (table_entry)
+//         return table_entry->vertex;
+//     else
+//         return 0;
+// }
+
+// static void instance_append_vertex(struct pp_instance_t* instance, struct BNVertex* vertex, const char* vertex_name)
+// {
+//     list_append(instance->vertices, vertex);
+//     if (vertex_name)
+//         list_append(instance->vertex_names, (void*)vertex_name);
+//     else
+//         /* FIXME should generate unique special names for intermediate results */
+//         list_append(instance->vertex_names, "");
+//     instance->n++;
+// }
+
+// /******************************************************************************
+// Compute expressions
+// ******************************************************************************/
+
+// static struct BNVertex* compute_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map,
+//                                      struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance);
+
+// static struct BNVertex* compute_if_expr(struct IfExprNode* expr, struct model_param_map_t* model_param_map,
+//                                         struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct BNVertex* condition;
+//     struct BNVertex* consequent;
+//     struct BNVertex* alternative;
+//     struct BNVertexComputeIf* vertex;
+
+//     condition = compute_expr(expr->condition, model_param_map, variable_vertex_map, instance);
+//     consequent = compute_expr(expr->consequent, model_param_map, variable_vertex_map, instance);
+//     alternative = compute_expr(expr->alternative, model_param_map, variable_vertex_map, instance);
+
+//     /* FIXME generate special names for intermediate results */
+//     instance_append_vertex(instance, condition, 0);
+//     instance_append_vertex(instance, consequent, 0);
+//     instance_append_vertex(instance, alternative, 0);
+
+//     vertex = malloc(sizeof(struct BNVertexComputeIf));
+//     vertex->super.super.type = BNV_COMPU;
+//     vertex->super.type = BNVC_IF;
+//     vertex->condition = condition;
+//     vertex->consequent = consequent;
+//     vertex->alternative = alternative;
+//     return (struct BNVertex*)vertex;
+// }
+
+// static struct BNVertex* compute_binary_expr(struct BinaryExprNode* expr, struct model_param_map_t* model_param_map,
+//                                             struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct BNVertex* left;
+//     struct BNVertex* right;
+//     struct BNVertexComputeBinop* vertex;
+
+//     left = compute_expr(expr->left, model_param_map, variable_vertex_map, instance);
+//     right = compute_expr(expr->right, model_param_map, variable_vertex_map, instance);
+
+//     instance_append_vertex(instance, left, 0);
+//     instance_append_vertex(instance, right, 0);
+
+//     vertex = malloc(sizeof(struct BNVertexComputeBinop));
+//     vertex->super.super.type = BNV_COMPU;
+//     vertex->super.type = BNVC_BINOP;
+//     vertex->left = left;
+//     vertex->right = right;
+
+//     if (expr->op == OP_ADD)
+//         vertex->binop = BINOP_PLUS;
+//     else if (expr->op == OP_SUB)
+//         vertex->binop = BINOP_SUB;
+//     else if (expr->op == OP_MUL)
+//         vertex->binop = BINOP_MULTI;
+//     else if (expr->op == OP_DIV)
+//         vertex->binop = BINOP_DIV;
+
+//     return (struct BNVertex*)vertex;
+// }
+
+// static float evaluate_numerical_value(struct NumericalValueNode* numerical_value);
+
+// static struct BNVertex* compute_numerical_value(struct NumericalValueNode* numerical_value)
+// {
+//     struct BNVertex* vertex;
+
+//     vertex = malloc(sizeof(struct BNVertex));
+//     vertex->type = BNV_CONST;
+//     vertex->sample = evaluate_numerical_value(numerical_value);
+//     return vertex;
+// }
+
+// static const char* variable_to_string(struct VariableNode* variable, struct model_param_map_t* model_param_map);
+
+// static struct BNVertex* compute_variable(struct VariableNode* variable, struct model_param_map_t* model_param_map,
+//                                          struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+
+//     const char* variable_string;
+//     symbol_t symbol;
+
+//     struct BNVertex* variable_vertex;
+//     struct BNVertexComputeUnary* vertex;
+
+//     variable_string = variable_to_string(variable, model_param_map);
+//     symbol = symbol_table_lookup_symbol(node_symbol_table(variable), variable_string);
+//     variable_vertex = variable_vertex_map_get(variable_vertex_map, symbol);
+
+//     /* copy the value in case of multiple samples drawn from the same distribution */
+//     vertex = malloc(sizeof(struct BNVertexComputeUnary));
+//     vertex->super.super.type = BNV_COMPU;
+//     vertex->super.type = BNVC_UNARY;
+//     vertex->primary = variable_vertex;
+//     vertex->op = UNARY_POS;
+
+//     return (struct BNVertex*)vertex;
+// }
+
+// static struct BNVertex* compute_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map,
+//                                         struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance);
+
+// static struct BNVertex* compute_unary_expr(struct UnaryExprNode* expr, struct model_param_map_t* model_param_map,
+//                                            struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct BNVertex* primary;
+//     struct BNVertexComputeUnary* vertex;
+
+//     primary = compute_primary(expr->primary, model_param_map, variable_vertex_map, instance);
+
+//     instance_append_vertex(instance, primary, 0);
+
+//     vertex = malloc(sizeof(struct BNVertexComputeUnary));
+//     vertex->super.super.type = BNV_COMPU;
+//     vertex->super.type = BNVC_UNARY;
+//     vertex->primary = primary;
+
+//     if (expr->op == OP_NEG)
+//         vertex->op = UNARY_NEG;
+
+//     return (struct BNVertex*)vertex;
+// }
+
+// static struct BNVertex* compute_func_expr(struct FuncExprNode* expr, struct model_param_map_t* model_param_map,
+//                                           struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     symbol_t sym_exp;
+//     symbol_t sym_log;
+//     struct BNVertex* value;
+//     struct BNVertexComputeFunc* vertex;
+
+//     sym_exp = symbol_table_lookup_symbol(node_symbol_table(expr), "exp");
+//     sym_log = symbol_table_lookup_symbol(node_symbol_table(expr), "log");
+
+//     if (expr->name == sym_exp) {
+//         assert(expr_seq_length(expr->expr_seq) == 1);
+
+//         value = compute_expr(expr->expr_seq->expr, model_param_map, variable_vertex_map, instance);
+//         instance_append_vertex(instance, value, 0);
+
+//         vertex = malloc(sizeof(struct BNVertexComputeFunc));
+//         vertex->super.super.type = BNV_COMPU;
+//         vertex->super.type = BNVC_FUNC;
+//         vertex->func = FUNC_EXP;
+//         vertex->args[0] = value;
+//         return (struct BNVertex*)vertex;
+//     }
+
+//     if (expr->name == sym_log) {
+//         assert(expr_seq_length(expr->expr_seq) == 1);
+
+//         value = compute_expr(expr->expr_seq->expr, model_param_map, variable_vertex_map, instance);
+//         instance_append_vertex(instance, value, 0);
+
+//         vertex = malloc(sizeof(struct BNVertexComputeFunc));
+//         vertex->super.super.type = BNV_COMPU;
+//         vertex->super.type = BNVC_FUNC;
+//         vertex->func = FUNC_LOG;
+//         vertex->args[0] = value;
+//         return (struct BNVertex*)vertex;
+//     }
+
+//     fprintf(stderr, "compute_func_expr (%d): unrecognized function %s\n", __LINE__, symbol_to_string(node_symbol_table(expr), expr->name));
+//     return 0;
+// }
+
+// static struct BNVertex* compute_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map,
+//                                         struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     if (primary->type == NUM_EXPR)
+//         return compute_numerical_value(((struct NumExprNode*)primary)->numerical_value);
+//     if (primary->type == VAR_EXPR)
+//         return compute_variable(((struct VarExprNode*)primary)->variable, model_param_map, variable_vertex_map, instance);
+//     if (primary->type == UNARY_EXPR)
+//         return compute_unary_expr((struct UnaryExprNode*)primary, model_param_map, variable_vertex_map, instance);
+//     if (primary->type == GROUP_EXPR)
+//         return compute_expr(((struct GroupExprNode*)primary)->expr, model_param_map, variable_vertex_map, instance);
+//     if (primary->type == FUNC_EXPR)
+//         return compute_func_expr((struct FuncExprNode*)primary, model_param_map, variable_vertex_map, instance);
+
+//     fprintf(stderr, "evaluate_primary (%d): unrecognized type %d\n", __LINE__, primary->type);
+//     return 0;
+// }
+
+// static struct BNVertex* compute_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map,
+//                                      struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     if (expr->type == IF_EXPR)
+//         return compute_if_expr((struct IfExprNode*)expr, model_param_map, variable_vertex_map, instance);
+//     if (expr->type == BINARY_EXPR)
+//         return compute_binary_expr((struct BinaryExprNode*)expr, model_param_map, variable_vertex_map, instance);
+//     if (expr->type == PRIMARY_EXPR)
+//         return compute_primary((struct PrimaryNode*)expr, model_param_map, variable_vertex_map, instance);
+
+//     fprintf(stderr, "compute_expr (%d): unrecognized type %d\n", __LINE__, expr->type);
+//     return 0;
+// }
+
+// /******************************************************************************
+// Evaluate expressions
+// ******************************************************************************/
+
+// static float evaluate_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map);
+
+// static float evaluate_if_expr(struct IfExprNode* expr, struct model_param_map_t* model_param_map)
+// {
+//     if (evaluate_expr(expr->condition, model_param_map))
+//         return evaluate_expr(expr->consequent, model_param_map);
+//     else
+//         return evaluate_expr(expr->alternative, model_param_map);
+// }
+
+// static float evaluate_binary_expr(struct BinaryExprNode* expr, struct model_param_map_t* model_param_map)
+// {
+//     float left;
+//     float right;
+
+//     left = evaluate_expr(expr->left, model_param_map);
+//     right = evaluate_expr(expr->right, model_param_map);
+
+//     if (expr->op == OP_ADD)
+//         return left + right;
+//     if (expr->op == OP_SUB)
+//         return left - right;
+//     if (expr->op == OP_MUL)
+//         return left * right;
+//     if (expr->op == OP_DIV)
+//         return left / right;
+
+//     fprintf(stderr, "evaluate_binary_expr (%d): unrecognized operator %d\n", __LINE__, expr->op);
+//     return 0;
+// }
+
+// static float evaluate_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map);
+
+// static float evaluate_unary_expr(struct UnaryExprNode* expr, struct model_param_map_t* model_param_map)
+// {
+//     float value;
+
+//     value = evaluate_primary(expr->primary, model_param_map);
+//     if (expr->op == OP_NEG)
+//         return -value;
+
+//     fprintf(stderr, "evaluate_unary_expr (%d): unrecognized operator %d\n", __LINE__, expr->op);
+//     return 0;
+// }
+
+// static float evaluate_func_expr(struct FuncExprNode* expr, struct model_param_map_t* model_param_map)
+// {
+//     symbol_t sym_exp;
+//     symbol_t sym_log;
+//     float value;
+
+//     sym_exp = symbol_table_lookup_symbol(node_symbol_table(expr), "exp");
+//     sym_log = symbol_table_lookup_symbol(node_symbol_table(expr), "log");
+
+//     if (expr->name == sym_exp) {
+//         assert(expr_seq_length(expr->expr_seq) == 1);
+//         value = evaluate_expr(expr->expr_seq->expr, model_param_map);
+//         return exp(value);
+//     }
+
+//     if (expr->name == sym_log) {
+//         assert(expr_seq_length(expr->expr_seq) == 1);
+//         value = evaluate_expr(expr->expr_seq->expr, model_param_map);
+//         return log(value);
+//     }
+
+//     fprintf(stderr, "evaluate_func_expr (%d): unrecognized function %s\n", __LINE__, symbol_to_string(node_symbol_table(expr), expr->name));
+//     return 0;
+// }
+
+// static float evaluate_integer_value(struct IntegerValueNode* integer_value)
+// {
+//     float value;
+// /*    int i;
  
-    value = 0;
-    for (i = 0; i < integer_value->length; i++) {
-        value *= 10;
-        value += integer_value->digits[i] - '0';
-    } */
-    value = integer_value->value;
-    return value;
-}
+//     value = 0;
+//     for (i = 0; i < integer_value->length; i++) {
+//         value *= 10;
+//         value += integer_value->digits[i] - '0';
+//     } */
+//     value = integer_value->value;
+//     return value;
+// }
 
-static float evaluate_real_value(struct RealValueNode* real_value)
-{
-    float value;
-/*    float base;
-    int i;
+// static float evaluate_real_value(struct RealValueNode* real_value)
+// {
+//     float value;
+//     float base;
+//     int i;
 
-    value = 0;
-    for (i = 0; i < real_value->integer_part->length; i++) {
-        value *= 10;
-        value += real_value->integer_part->digits[i] - '0';
-    }
-    base = 1;
-    for (i = 0; i < real_value->fractional->length; i++) {
-        base /= 10;
-        value += base * (real_value->fractional->digits[i] - '0');
-    }*/
-    value = real_value->value;
-    return value;
-}
+//     value = 0;
+//     for (i = 0; i < real_value->integer_part->length; i++) {
+//         value *= 10;
+//         value += real_value->integer_part->digits[i] - '0';
+//     }
+//     base = 1;
+//     for (i = 0; i < real_value->fractional->length; i++) {
+//         base /= 10;
+//         value += base * (real_value->fractional->digits[i] - '0');
+//     }
+//     value = real_value->value;
+//     return value;
+// }
 
-static float evaluate_numerical_value(struct NumericalValueNode* numerical_value)
-{
-    if (numerical_value->type == REAL_VALUE)
-        return evaluate_real_value((struct RealValueNode*)numerical_value);
+// static float evaluate_numerical_value(struct NumericalValueNode* numerical_value)
+// {
+//     if (numerical_value->type == REAL_VALUE)
+//         return evaluate_real_value((struct RealValueNode*)numerical_value);
 
-    if (numerical_value->type == INTEGER_VALUE)
-        return evaluate_integer_value((struct IntegerValueNode*)numerical_value);
+//     if (numerical_value->type == INTEGER_VALUE)
+//         return evaluate_integer_value((struct IntegerValueNode*)numerical_value);
 
-    fprintf(stderr, "evaluate_numerical_value (%d): unrecognized type %d\n", __LINE__, numerical_value->type);
-    return 0;
-}
+//     fprintf(stderr, "evaluate_numerical_value (%d): unrecognized type %d\n", __LINE__, numerical_value->type);
+//     return 0;
+// }
 
-static const char* variable_to_string(struct VariableNode* variable, struct model_param_map_t* model_param_map);
+// static const char* variable_to_string(struct VariableNode* variable, struct model_param_map_t* model_param_map);
 
-static float evaluate_variable(struct VariableNode* variable, struct model_param_map_t* model_param_map)
-{
-    const char* variable_string;
-    symbol_t symbol;
+// static float evaluate_variable(struct VariableNode* variable, struct model_param_map_t* model_param_map)
+// {
+//     const char* variable_string;
+//     symbol_t symbol;
 
-    variable_string = variable_to_string(variable, model_param_map);
-    symbol = symbol_table_lookup_symbol(node_symbol_table(variable), variable_string);
-    return model_param_map_get(model_param_map, symbol);
-}
+//     variable_string = variable_to_string(variable, model_param_map);
+//     symbol = symbol_table_lookup_symbol(node_symbol_table(variable), variable_string);
+//     return model_param_map_get(model_param_map, symbol);
+// }
 
-static float evaluate_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map)
-{
-    if (primary->type == NUM_EXPR)
-        return evaluate_numerical_value(((struct NumExprNode*)primary)->numerical_value);
-    if (primary->type == VAR_EXPR)
-        return evaluate_variable(((struct VarExprNode*)primary)->variable, model_param_map);
-    if (primary->type == UNARY_EXPR)
-        return evaluate_unary_expr((struct UnaryExprNode*)primary, model_param_map);
-    if (primary->type == GROUP_EXPR)
-        return evaluate_expr(((struct GroupExprNode*)primary)->expr, model_param_map);
-    if (primary->type == FUNC_EXPR)
-        return evaluate_func_expr((struct FuncExprNode*)primary, model_param_map);
+// static float evaluate_primary(struct PrimaryNode* primary, struct model_param_map_t* model_param_map)
+// {
+//     if (primary->type == NUM_EXPR)
+//         return evaluate_numerical_value(((struct NumExprNode*)primary)->numerical_value);
+//     if (primary->type == VAR_EXPR)
+//         return evaluate_variable(((struct VarExprNode*)primary)->variable, model_param_map);
+//     if (primary->type == UNARY_EXPR)
+//         return evaluate_unary_expr((struct UnaryExprNode*)primary, model_param_map);
+//     if (primary->type == GROUP_EXPR)
+//         return evaluate_expr(((struct GroupExprNode*)primary)->expr, model_param_map);
+//     if (primary->type == FUNC_EXPR)
+//         return evaluate_func_expr((struct FuncExprNode*)primary, model_param_map);
 
-    fprintf(stderr, "evaluate_primary (%d): unrecognized type %d\n", __LINE__, primary->type);
-    return 0;
-}
+//     fprintf(stderr, "evaluate_primary (%d): unrecognized type %d\n", __LINE__, primary->type);
+//     return 0;
+// }
 
-static float evaluate_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map)
-{
-    if (expr->type == IF_EXPR)
-        return evaluate_if_expr((struct IfExprNode*)expr, model_param_map);
-    if (expr->type == BINARY_EXPR)
-        return evaluate_binary_expr((struct BinaryExprNode*)expr, model_param_map);
-    if (expr->type == PRIMARY_EXPR)
-        return evaluate_primary((struct PrimaryNode*)expr, model_param_map);
+// static float evaluate_expr(struct ExprNode* expr, struct model_param_map_t* model_param_map)
+// {
+//     if (expr->type == IF_EXPR)
+//         return evaluate_if_expr((struct IfExprNode*)expr, model_param_map);
+//     if (expr->type == BINARY_EXPR)
+//         return evaluate_binary_expr((struct BinaryExprNode*)expr, model_param_map);
+//     if (expr->type == PRIMARY_EXPR)
+//         return evaluate_primary((struct PrimaryNode*)expr, model_param_map);
 
-    fprintf(stderr, "evaluate_expr (%d): unrecognized type %d\n", __LINE__, expr->type);
-    return 0;
-}
+//     fprintf(stderr, "evaluate_expr (%d): unrecognized type %d\n", __LINE__, expr->type);
+//     return 0;
+// }
 
-static const char* name_var_to_string(struct NameVarNode* name_var)
-{
-    return symbol_to_string(node_symbol_table(name_var), name_var->name);
-}
+// static const char* name_var_to_string(struct NameVarNode* name_var)
+// {
+//     return symbol_to_string(node_symbol_table(name_var), name_var->name);
+// }
 
-static const char* field_var_to_string(struct FieldVarNode* field_var)
-{
-    const char* name;
-    const char* field_name;
-    char* string;
+// static const char* field_var_to_string(struct FieldVarNode* field_var)
+// {
+//     const char* name;
+//     const char* field_name;
+//     char* string;
 
-    name = symbol_to_string(node_symbol_table(field_var), field_var->name);
-    field_name = symbol_to_string(node_symbol_table(field_var), field_var->field_name);
+//     name = symbol_to_string(node_symbol_table(field_var), field_var->name);
+//     field_name = symbol_to_string(node_symbol_table(field_var), field_var->field_name);
 
-    string = malloc(strlen(name) + 1 + strlen(field_name) + 1);
-    strcpy(string, name);
-    strcat(string, ".");
-    strcat(string, field_name);
-    return string;
-}
+//     string = malloc(strlen(name) + 1 + strlen(field_name) + 1);
+//     strcpy(string, name);
+//     strcat(string, ".");
+//     strcat(string, field_name);
+//     return string;
+// }
 
-static const char* index_var_to_string(struct IndexVarNode* index_var, struct model_param_map_t* model_param_map)
-{
-    struct ilist_t* indices;
-    struct ExprSeqNode* expr_seq;
-    const char* name;
-    size_t len;
-    struct ilist_entry_t* index;
-    char index_string[MAX_INTEGER_VALUE_SIZE];
-    char* string;
+// static const char* index_var_to_string(struct IndexVarNode* index_var, struct model_param_map_t* model_param_map)
+// {
+//     struct ilist_t* indices;
+//     struct ExprSeqNode* expr_seq;
+//     const char* name;
+//     size_t len;
+//     struct ilist_entry_t* index;
+//     char index_string[MAX_INTEGER_VALUE_SIZE];
+//     char* string;
 
-    /* Step 1. Evaluate index expressions */
-    indices = new_ilist();
-    expr_seq = index_var->expr_seq;
-    while (expr_seq) {
-        ilist_append(indices, (int)evaluate_expr(expr_seq->expr, model_param_map));
-        expr_seq = expr_seq->expr_seq;
-    }
+//     /* Step 1. Evaluate index expressions */
+//     indices = new_ilist();
+//     expr_seq = index_var->expr_seq;
+//     while (expr_seq) {
+//         ilist_append(indices, (int)evaluate_expr(expr_seq->expr, model_param_map));
+//         expr_seq = expr_seq->expr_seq;
+//     }
 
-    /* Step 2. Calculate index_var string representation length */
-    name = symbol_to_string(node_symbol_table(index_var), index_var->name);
-    len = strlen(name) + 1; /* name[ */
-    index = indices->entry;
-    while (index) {
-        sprintf(index_string, "%d", index->data);
-        len += strlen(index_string);
-        if (index->next)
-            len += 1; /* , */
-        index = index->next;
-    }
-    len += 1; /* ] */
+//     /* Step 2. Calculate index_var string representation length */
+//     name = symbol_to_string(node_symbol_table(index_var), index_var->name);
+//     len = strlen(name) + 1; /* name[ */
+//     index = indices->entry;
+//     while (index) {
+//         sprintf(index_string, "%d", index->data);
+//         len += strlen(index_string);
+//         if (index->next)
+//             len += 1; /* , */
+//         index = index->next;
+//     }
+//     len += 1; /* ] */
 
-    /* Step 3. Concatenate index_var string components */
-    string = malloc(len + 1);
-    strcpy(string, name);
-    strcat(string, "[");
-    index = indices->entry;
-    while (index) {
-        sprintf(index_string, "%d", index->data);
-        strcat(string, index_string);
-        if (index->next)
-            strcat(string, ",");
-        index = index->next;
-    }
-    strcat(string, "]");
+//     /* Step 3. Concatenate index_var string components */
+//     string = malloc(len + 1);
+//     strcpy(string, name);
+//     strcat(string, "[");
+//     index = indices->entry;
+//     while (index) {
+//         sprintf(index_string, "%d", index->data);
+//         strcat(string, index_string);
+//         if (index->next)
+//             strcat(string, ",");
+//         index = index->next;
+//     }
+//     strcat(string, "]");
 
-    return string;
-}
+//     return string;
+// }
 
-static const char* variable_to_string(struct VariableNode* variable, struct model_param_map_t* model_param_map)
-{
-    if (variable->type == NAME_VAR)
-        return name_var_to_string((struct NameVarNode*)variable);
-    if (variable->type == FIELD_VAR)
-        return field_var_to_string((struct FieldVarNode*)variable);
-    if (variable->type == INDEX_VAR)
-        return index_var_to_string((struct IndexVarNode*)variable, model_param_map);
-    return 0;
-}
+// static const char* variable_to_string(struct VariableNode* variable, struct model_param_map_t* model_param_map)
+// {
+//     if (variable->type == NAME_VAR)
+//         return name_var_to_string((struct NameVarNode*)variable);
+//     if (variable->type == FIELD_VAR)
+//         return field_var_to_string((struct FieldVarNode*)variable);
+//     if (variable->type == INDEX_VAR)
+//         return index_var_to_string((struct IndexVarNode*)variable, model_param_map);
+//     return 0;
+// }
 
-/* forward declaration */
-static void execute_stmts(struct StmtsNode* stmts, struct model_param_map_t* model_param_map,
-                          struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance);
+// /* forward declaration */
+// static void execute_stmts(struct StmtsNode* stmts, struct model_param_map_t* model_param_map,
+//                           struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance);
 
-static void execute_draw_dbern(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
-                               struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct ExprNode* p;
-    struct BNVertex* p_vert;
-    struct BNVertexDrawBern* vertex;
-    const char* variable_string;
-    symbol_t variable;
+// static void execute_draw_dbern(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
+//                                struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct ExprNode* p;
+//     struct BNVertex* p_vert;
+//     struct BNVertexDrawBern* vertex;
+//     const char* variable_string;
+//     symbol_t variable;
 
-    assert(expr_seq_length(draw_stmt->expr_seq) == 1);
-    p = draw_stmt->expr_seq->expr;
+//     assert(expr_seq_length(draw_stmt->expr_seq) == 1);
+//     p = draw_stmt->expr_seq->expr;
 
-    p_vert = compute_expr(p, model_param_map, variable_vertex_map, instance);
-    instance_append_vertex(instance, p_vert, 0);
+//     p_vert = compute_expr(p, model_param_map, variable_vertex_map, instance);
+//     instance_append_vertex(instance, p_vert, 0);
 
-    vertex = malloc(sizeof(struct BNVertexDrawBern));
-    vertex->super.super.type = BNV_DRAW;
-    vertex->super.type = FLIP;
-    vertex->p = p_vert;
+//     vertex = malloc(sizeof(struct BNVertexDrawBern));
+//     vertex->super.super.type = BNV_DRAW;
+//     vertex->super.type = FLIP;
+//     vertex->p = p_vert;
 
-    variable_string = variable_to_string(draw_stmt->variable, model_param_map);
-    instance_append_vertex(instance, (struct BNVertex*)vertex, variable_string);
+//     variable_string = variable_to_string(draw_stmt->variable, model_param_map);
+//     instance_append_vertex(instance, (struct BNVertex*)vertex, variable_string);
 
-    variable = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), variable_string);
-    variable_vertex_map_put(variable_vertex_map, variable, (struct BNVertex*)vertex);
-}
+//     variable = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), variable_string);
+//     variable_vertex_map_put(variable_vertex_map, variable, (struct BNVertex*)vertex);
+// }
 
-static void execute_draw_dnorm(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
-                               struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct ExprNode* mean;
-    struct ExprNode* variance;
-    struct BNVertex* mean_vert;
-    struct BNVertex* variance_vert;
-    struct BNVertexDrawNorm* vertex;
-    const char* variable_string;
-    symbol_t variable;
+// static void execute_draw_dnorm(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
+//                                struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct ExprNode* mean;
+//     struct ExprNode* variance;
+//     struct BNVertex* mean_vert;
+//     struct BNVertex* variance_vert;
+//     struct BNVertexDrawNorm* vertex;
+//     const char* variable_string;
+//     symbol_t variable;
 
-    assert(expr_seq_length(draw_stmt->expr_seq) == 2);
-    mean = draw_stmt->expr_seq->expr;
-    variance = draw_stmt->expr_seq->expr_seq->expr;
+//     assert(expr_seq_length(draw_stmt->expr_seq) == 2);
+//     mean = draw_stmt->expr_seq->expr;
+//     variance = draw_stmt->expr_seq->expr_seq->expr;
 
-    mean_vert = compute_expr(mean, model_param_map, variable_vertex_map, instance);
-    variance_vert = compute_expr(variance, model_param_map, variable_vertex_map, instance);
+//     mean_vert = compute_expr(mean, model_param_map, variable_vertex_map, instance);
+//     variance_vert = compute_expr(variance, model_param_map, variable_vertex_map, instance);
 
-    instance_append_vertex(instance, mean_vert, 0);
-    instance_append_vertex(instance, variance_vert, 0);
+//     instance_append_vertex(instance, mean_vert, 0);
+//     instance_append_vertex(instance, variance_vert, 0);
 
-    vertex = malloc(sizeof(struct BNVertexDrawNorm));
-    vertex->super.super.type = BNV_DRAW;
-    vertex->super.type = GAUSSIAN;
-    vertex->mean = mean_vert;
-    vertex->variance = variance_vert;
+//     vertex = malloc(sizeof(struct BNVertexDrawNorm));
+//     vertex->super.super.type = BNV_DRAW;
+//     vertex->super.type = GAUSSIAN;
+//     vertex->mean = mean_vert;
+//     vertex->variance = variance_vert;
 
-    variable_string = variable_to_string(draw_stmt->variable, model_param_map);
-    instance_append_vertex(instance, (struct BNVertex*)vertex, variable_string);
+//     variable_string = variable_to_string(draw_stmt->variable, model_param_map);
+//     instance_append_vertex(instance, (struct BNVertex*)vertex, variable_string);
 
-    variable = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), variable_string);
-    variable_vertex_map_put(variable_vertex_map, variable, (struct BNVertex*)vertex);
-}
+//     variable = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), variable_string);
+//     variable_vertex_map_put(variable_vertex_map, variable, (struct BNVertex*)vertex);
+// }
 
-static void execute_draw_dgamma(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
-                                struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct ExprNode* a;
-    struct ExprNode* b;
-    struct BNVertex* a_vert;
-    struct BNVertex* b_vert;
-    struct BNVertexDrawGamma* vertex;
-    const char* variable_string;
-    symbol_t variable;
+// static void execute_draw_dgamma(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
+//                                 struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct ExprNode* a;
+//     struct ExprNode* b;
+//     struct BNVertex* a_vert;
+//     struct BNVertex* b_vert;
+//     struct BNVertexDrawGamma* vertex;
+//     const char* variable_string;
+//     symbol_t variable;
 
-    assert(expr_seq_length(draw_stmt->expr_seq) == 2);
-    a = draw_stmt->expr_seq->expr;
-    b = draw_stmt->expr_seq->expr_seq->expr;
+//     assert(expr_seq_length(draw_stmt->expr_seq) == 2);
+//     a = draw_stmt->expr_seq->expr;
+//     b = draw_stmt->expr_seq->expr_seq->expr;
 
-    a_vert = compute_expr(a, model_param_map, variable_vertex_map, instance);
-    b_vert = compute_expr(b, model_param_map, variable_vertex_map, instance);
+//     a_vert = compute_expr(a, model_param_map, variable_vertex_map, instance);
+//     b_vert = compute_expr(b, model_param_map, variable_vertex_map, instance);
 
-    instance_append_vertex(instance, a_vert, 0);
-    instance_append_vertex(instance, b_vert, 0);
+//     instance_append_vertex(instance, a_vert, 0);
+//     instance_append_vertex(instance, b_vert, 0);
 
-    vertex = malloc(sizeof(struct BNVertexDrawGamma));
-    vertex->super.super.type = BNV_DRAW;
-    vertex->super.type = GAMMA;
-    vertex->a = a_vert;
-    vertex->b = b_vert;
+//     vertex = malloc(sizeof(struct BNVertexDrawGamma));
+//     vertex->super.super.type = BNV_DRAW;
+//     vertex->super.type = GAMMA;
+//     vertex->a = a_vert;
+//     vertex->b = b_vert;
 
-    variable_string = variable_to_string(draw_stmt->variable, model_param_map);
-    instance_append_vertex(instance, (struct BNVertex*)vertex, variable_string);
+//     variable_string = variable_to_string(draw_stmt->variable, model_param_map);
+//     instance_append_vertex(instance, (struct BNVertex*)vertex, variable_string);
 
-    variable = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), variable_string);
-    variable_vertex_map_put(variable_vertex_map, variable, (struct BNVertex*)vertex);
-}
+//     variable = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), variable_string);
+//     variable_vertex_map_put(variable_vertex_map, variable, (struct BNVertex*)vertex);
+// }
 
-static void execute_draw_stmt(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
-                              struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    /* variable ~ dist(expr_seq) */
-/*    symbol_t dbern;
-    symbol_t dnorm;
-    symbol_t dgamma;
+// static void execute_draw_stmt(struct DrawStmtNode* draw_stmt, struct model_param_map_t* model_param_map,
+//                               struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     /* variable ~ dist(expr_seq) */
+// /*    symbol_t dbern;
+//     symbol_t dnorm;
+//     symbol_t dgamma;
 
-    dbern = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dbern");
-    dnorm = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dnorm");
-    dgamma = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dgamma"); */
+//     dbern = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dbern");
+//     dnorm = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dnorm");
+//     dgamma = symbol_table_lookup_symbol(node_symbol_table(draw_stmt), "dgamma"); */
 
-    /*if (draw_stmt->dist == dbern)
-        execute_draw_dbern(draw_stmt, model_param_map, variable_vertex_map, instance);
-    else if (draw_stmt->dist == dnorm)
-        execute_draw_dnorm(draw_stmt, model_param_map, variable_vertex_map, instance);
-    else if (draw_stmt->dist == dgamma)
-        execute_draw_dgamma(draw_stmt, model_param_map, variable_vertex_map, instance);
-    else
-        fprintf(stderr, "execute_draw_stmt (%d): unrecognized distribution", __LINE__);*/
-    switch (draw_stmt->dist_type) {
-    case ERP_FLIP:
-        execute_draw_dbern(draw_stmt, model_param_map, variable_vertex_map, instance);
-        break;
-    case ERP_GAUSSIAN:
-        execute_draw_dnorm(draw_stmt, model_param_map, variable_vertex_map, instance);
-        break;
-    case ERP_GAMMA:
-        execute_draw_dgamma(draw_stmt, model_param_map, variable_vertex_map, instance);
-        break;
-    default:
-        fprintf(stderr, "execute_draw_stmt (%d): unrecognized distribution", __LINE__);
-    }
-}
+//     /*if (draw_stmt->dist == dbern)
+//         execute_draw_dbern(draw_stmt, model_param_map, variable_vertex_map, instance);
+//     else if (draw_stmt->dist == dnorm)
+//         execute_draw_dnorm(draw_stmt, model_param_map, variable_vertex_map, instance);
+//     else if (draw_stmt->dist == dgamma)
+//         execute_draw_dgamma(draw_stmt, model_param_map, variable_vertex_map, instance);
+//     else
+//         fprintf(stderr, "execute_draw_stmt (%d): unrecognized distribution", __LINE__);*/
+//     switch (draw_stmt->dist_type) {
+//     case ERP_FLIP:
+//         execute_draw_dbern(draw_stmt, model_param_map, variable_vertex_map, instance);
+//         break;
+//     case ERP_GAUSSIAN:
+//         execute_draw_dnorm(draw_stmt, model_param_map, variable_vertex_map, instance);
+//         break;
+//     case ERP_GAMMA:
+//         execute_draw_dgamma(draw_stmt, model_param_map, variable_vertex_map, instance);
+//         break;
+//     default:
+//         fprintf(stderr, "execute_draw_stmt (%d): unrecognized distribution", __LINE__);
+//     }
+// }
 
-static void execute_let_stmt(struct LetStmtNode* let_stmt, struct model_param_map_t* model_param_map,
-                             struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    if (let_stmt->expr->type == NEW_EXPR) {
-        /* FIXME variable = new name () */
-        fprintf(stderr, "execute_let_stmt (%d): NEW_EXPR not implemented\n", __LINE__);
-    } else {
-        /* variable = expr */
-        struct BNVertex* vertex;
-        const char* variable_string;
-        symbol_t variable;
+// static void execute_let_stmt(struct LetStmtNode* let_stmt, struct model_param_map_t* model_param_map,
+//                              struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     if (let_stmt->expr->type == NEW_EXPR) {
+//         /* FIXME variable = new name () */
+//         fprintf(stderr, "execute_let_stmt (%d): NEW_EXPR not implemented\n", __LINE__);
+//     } else {
+//         /* variable = expr */
+//         struct BNVertex* vertex;
+//         const char* variable_string;
+//         symbol_t variable;
 
-        vertex = compute_expr(let_stmt->expr, model_param_map, variable_vertex_map, instance);
+//         vertex = compute_expr(let_stmt->expr, model_param_map, variable_vertex_map, instance);
 
-        variable_string = variable_to_string(let_stmt->variable, model_param_map);
-        instance_append_vertex(instance, vertex, variable_string);
+//         variable_string = variable_to_string(let_stmt->variable, model_param_map);
+//         instance_append_vertex(instance, vertex, variable_string);
 
-        variable = symbol_table_lookup_symbol(node_symbol_table(let_stmt), variable_string);
-        variable_vertex_map_put(variable_vertex_map, variable, vertex);
-    }
-}
+//         variable = symbol_table_lookup_symbol(node_symbol_table(let_stmt), variable_string);
+//         variable_vertex_map_put(variable_vertex_map, variable, vertex);
+//     }
+// }
 
-static void execute_for_stmt(struct ForStmtNode* for_stmt, struct model_param_map_t* model_param_map,
-                             struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    /* "for" name "=" start_expr "to" end_expr "{" stmts "}" */
-    float start_value;
-    float end_value;
-    float value;
+// static void execute_for_stmt(struct ForStmtNode* for_stmt, struct model_param_map_t* model_param_map,
+//                              struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     /* "for" name "=" start_expr "to" end_expr "{" stmts "}" */
+//     float start_value;
+//     float end_value;
+//     float value;
 
-    start_value = evaluate_expr(for_stmt->start_expr, model_param_map);
-    end_value = evaluate_expr(for_stmt->end_expr, model_param_map);
+//     start_value = evaluate_expr(for_stmt->start_expr, model_param_map);
+//     end_value = evaluate_expr(for_stmt->end_expr, model_param_map);
 
-    for (value = start_value; value <= end_value; value++) {
-        model_param_map_put(model_param_map, for_stmt->name, value);
-        execute_stmts(for_stmt->stmts, model_param_map, variable_vertex_map, instance);
-    }
-}
+//     for (value = start_value; value <= end_value; value++) {
+//         model_param_map_put(model_param_map, for_stmt->name, value);
+//         execute_stmts(for_stmt->stmts, model_param_map, variable_vertex_map, instance);
+//     }
+// }
 
-static void execute_stmts(struct StmtsNode* stmts, struct model_param_map_t* model_param_map,
-                          struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct StmtNode* stmt;
+// static void execute_stmts(struct StmtsNode* stmts, struct model_param_map_t* model_param_map,
+//                           struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct StmtNode* stmt;
 
-    while (stmts) {
-        stmt = stmts->stmt;
+//     while (stmts) {
+//         stmt = stmts->stmt;
 
-        if (stmt->type == DRAW_STMT)
-            execute_draw_stmt((struct DrawStmtNode*)stmt, model_param_map, variable_vertex_map, instance);
-        else if (stmt->type == LET_STMT)
-            execute_let_stmt((struct LetStmtNode*)stmt, model_param_map, variable_vertex_map, instance);
-        else if (stmt->type == FOR_STMT)
-            execute_for_stmt((struct ForStmtNode*)stmt, model_param_map, variable_vertex_map, instance);
-        else
-            fprintf(stderr, "instantiate_model (%d): unrecognized stmt type %d\n", __LINE__, stmt->type);
+//         if (stmt->type == DRAW_STMT)
+//             execute_draw_stmt((struct DrawStmtNode*)stmt, model_param_map, variable_vertex_map, instance);
+//         else if (stmt->type == LET_STMT)
+//             execute_let_stmt((struct LetStmtNode*)stmt, model_param_map, variable_vertex_map, instance);
+//         else if (stmt->type == FOR_STMT)
+//             execute_for_stmt((struct ForStmtNode*)stmt, model_param_map, variable_vertex_map, instance);
+//         else
+//             fprintf(stderr, "instantiate_model (%d): unrecognized stmt type %d\n", __LINE__, stmt->type);
 
-        stmts = stmts->stmts;
-    }
-}
+//         stmts = stmts->stmts;
+//     }
+// }
 
-static void instantiate_model(struct ModelNode* model, float* model_params,
-                              struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
-{
-    struct model_param_map_t model_param_map = {0};
-    struct ModelParamsNode* model_params_node;
-    struct BNVertex* vertex;
+// static void instantiate_model(struct ModelNode* model, float* model_params,
+//                               struct variable_vertex_map_t* variable_vertex_map, struct pp_instance_t* instance)
+// {
+//     struct model_param_map_t model_param_map = {0};
+//     struct ModelParamsNode* model_params_node;
+//     struct BNVertex* vertex;
 
-    model_params_node = model->params;
-    while (model_params_node && model_params) {
-        model_param_map_put(&model_param_map, model_params_node->name, *model_params);
+//     model_params_node = model->params;
+//     while (model_params_node && model_params) {
+//         model_param_map_put(&model_param_map, model_params_node->name, *model_params);
 
-        vertex = malloc(sizeof(struct BNVertex));
-        vertex->type = BNV_CONST;
-        vertex->sample = *model_params;
-        instance_append_vertex(instance, vertex, symbol_to_string(node_symbol_table(model), model_params_node->name));
-        variable_vertex_map_put(variable_vertex_map, model_params_node->name, vertex);
+//         vertex = malloc(sizeof(struct BNVertex));
+//         vertex->type = BNV_CONST;
+//         vertex->sample = *model_params;
+//         instance_append_vertex(instance, vertex, symbol_to_string(node_symbol_table(model), model_params_node->name));
+//         variable_vertex_map_put(variable_vertex_map, model_params_node->name, vertex);
 
-        model_params_node = model_params_node->model_params;
-        model_params++;
-    }
-    if (model_params_node || model_params) {
-        fprintf(stderr, "instantiate_model (%d): model params number mismatch\n", __LINE__);
-    }
+//         model_params_node = model_params_node->model_params;
+//         model_params++;
+//     }
+//     if (model_params_node || model_params) {
+//         fprintf(stderr, "instantiate_model (%d): model params number mismatch\n", __LINE__);
+//     }
 
-    execute_stmts(model->stmts, &model_param_map, variable_vertex_map, instance);
-}
+//     execute_stmts(model->stmts, &model_param_map, variable_vertex_map, instance);
+// }
 
-void init_instance(struct ModelNode* model, float* model_params, struct pp_instance_t* instance)
-{
-    struct variable_vertex_map_t variable_vertex_map = {0};
-    instance->n = 0;
-    instance->vertices = new_list();
-    instance->vertex_names = new_list();
-    instantiate_model(model, model_params, &variable_vertex_map, instance);
-}
+// void init_instance(struct ModelNode* model, float* model_params, struct pp_instance_t* instance)
+// {
+//     struct variable_vertex_map_t variable_vertex_map = {0};
+//     instance->n = 0;
+//     instance->vertices = new_list();
+//     instance->vertex_names = new_list();
+//     instantiate_model(model, model_params, &variable_vertex_map, instance);
+// }
 
 #undef DUMP_CALL

@@ -7,7 +7,8 @@ export ${CC}
 all: flip
 
 PARSE_OBJ = parse/parse.o parse/list.o parse/ilist.o parse/symbol_table.o parse/interface.o
-INFER_OBJ = infer/infer.o infer/hash_table.o infer/rejection.o infer/erp.o infer/trace.o infer/variables.o
+INFER_OBJ = infer/infer.o infer/hash_table.o infer/rejection.o infer/erp.o infer/trace.o infer/variables.o \
+			infer/execute.o infer/mh_sampler.o
 
 libppp.a: parse_module query_module infer_module debug.o
 	$(AR) libppp.a ${PARSE_OBJ} query/query.o ${INFER_OBJ} debug.o

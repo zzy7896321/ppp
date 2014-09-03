@@ -35,12 +35,12 @@ void init_sample_method() {
 	}
 
 	else {
-		ERR_OUTPUT("SAMPLE METHOD = Metropolis-Hastings (unhandled)\n");
-		//g_sample_function = mh_sampling;
+		ERR_OUTPUT("SAMPLE METHOD = Metropolis-Hastings\n");
+		g_sample_function = mh_sampling;
 	}
 }
 
-const char* pp_sample_error_string[14] = {
+const char* pp_sample_error_string[PP_SAMPLE_FUNCTION_ERROR_NUM] = {
 	"PP_SAMPLE_FUNCTION_NORMAL",
 	"PP_SAMPLE_FUNCTION_MODEL_NOT_FOUND",
 	"PP_SAMPLE_FUNCTION_INVALID_STATEMENT",
@@ -55,6 +55,8 @@ const char* pp_sample_error_string[14] = {
 	"PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION",
 	"PP_SAMPLE_FUNCTION_NUMBER_OF_PARAMETER_MISMATCH",
 	"PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE",
+
+	"PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE",
 };
 
 struct pp_trace_store_t* pp_sample(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], struct pp_query_t* query) {

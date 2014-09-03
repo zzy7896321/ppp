@@ -43,6 +43,14 @@ int main()
 	pp_trace_dump(traces->trace[traces->n-1], buffer, 8096);
 	printf(buffer); 
 
+    FILE* trace_dump_file = fopen("trace_dump.txt", "w");
+    for (size_t i = 0; i != traces->n; ++i) {
+        pp_trace_dump(traces->trace[i], buffer, 8096);
+        fprintf(trace_dump_file, "[trace %u]\n", i);
+        fprintf(trace_dump_file, buffer);
+    }
+    fclose(trace_dump_file);
+
 	// pp_free is broken
     pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */
 

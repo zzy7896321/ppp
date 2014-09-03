@@ -25,7 +25,7 @@
 
 #define FLOAT_ERR 1e-4
 
-const char* erp_name(erp_enum_t erp_type) {
+/*const char* erp_name(erp_enum_t erp_type) {
     switch (erp_type) {
     case ERP_FLIP:
         return "flip";
@@ -48,7 +48,33 @@ const char* erp_name(erp_enum_t erp_type) {
     }
 
     return "unknown";
-}
+} */
+
+char* ERP_NAME[NUMBER_OF_ERP] = {
+    "unknown",
+    "flip",
+    "multinomial",
+    "uniform",
+    "gaussian",
+    "gamma",
+    "beta",
+    "binomial",
+    "poisson",
+    "dirichlet",
+};
+
+size_t ERP_NUM_OF_PARAM[NUMBER_OF_ERP] = {
+    0 , /* ERP_UNKNOWN */
+    1 , /* ERP_FLIP */
+    1 , /* ERP_MULTINOMIAL */
+    2 , /* ERP_UNIFORM */
+    2 , /* ERP_GAUSSIAN */
+    2 , /* ERP_GAMMA */
+    2 , /* ERP_BETA */
+    2 , /* ERP_BINOMIAL */
+    1 , /* ERP_POISSON */
+    2 , /* ERP_DIRICHLET */
+};
 
 erp_enum_t erp_type(const char* erp_name) {
     #define ERP_TYPE_CASE(name, type) \

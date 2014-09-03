@@ -26,6 +26,7 @@ int pp_free(pp_state_t* state);
 int pp_load_file(pp_state_t* state, const char* filename);
 int add_models(pp_state_t* instance, ModelsNode* models);
 
+/*
 typedef struct pp_instance_t
 {
     int n;
@@ -38,6 +39,6 @@ int pp_instance_num_vertices(pp_instance_t* instance);
 struct BNVertex* pp_instance_vertex(pp_instance_t* instance, int i);
 const char* pp_insatnce_vertex_name(pp_instance_t* instance, int i);
 int pp_instance_find_num_of_vertex(pp_instance_t* instance, struct BNVertex* vertex);
-float pp_name_to_value(pp_instance_t* instance, const char* name);
+float pp_name_to_value(pp_instance_t* instance, const char* name); */
 
 #endif

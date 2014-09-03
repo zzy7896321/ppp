@@ -1,518 +1,776 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <math.h>
+#include <stdarg.h>
+
 #include "mh_sampler.h"
 #include "infer.h"
 #include "../debug.h"
-#include <math.h>
-#include <stdlib.h>
-#include <assert.h>
+#include "rejection.h"
+#include "execute.h"
 
-#ifdef DEBUG
-	#define ERR_OUTPUT(...) \
-		fprintf(stderr, "%s(%d): ", __FILE__, __LINE__); \
-		fprintf(stderr,  __VA_ARGS__)
-#else
-	#define ERR_OUTPUT(...) 
-#endif
+unsigned g_mh_sampler_burn_in_iterations = 0;
+unsigned g_mh_sampler_lag = 10;
+unsigned g_mh_sampler_maximum_initial_round = 200;
 
-int g_mh_sampler_burn_in_iterations = 0;//2000; temporarily disabled
-int g_mh_sampler_lag = 1;
+#define STACK_DEFAULT_VALUE 0
+#define STACK_DESTROY_VALUE(value)
+DEFINE_STACK(loop_index, unsigned)
+#undef STACK_DEFAULT_VALUE
+#undef STACK_DESTROY_VALUE
 
-int mh_sampling(struct pp_instance_t* instance, acceptor_t condition_acceptor, 
-				name_to_value_t name_to_value_F, void* raw_data, 
-				vertices_handler_t add_trace, void* add_trace_data) 
-{
-	/* debug output */
-	FILE* transition_out = fopen("transitions.txt", "w");
-	/* end debug output */
+int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query, void** internal_data_ptr, pp_trace_t** trace_ptr) {
 
-	ERR_OUTPUT("initialing mh_sampler\n");
-	mh_sampler_t* sampler = mh_sampler_init(instance);	
-	
-	ERR_OUTPUT("initializing trace\n");
-	mh_sampler_trace_update(sampler);
+	mh_sampler_t* mh_sampler = (mh_sampler_t*)(*internal_data_ptr);
+	//ERR_OUTPUT("entering mh_sampling\n");
 
-	ERR_OUTPUT("accepting_update\n");
-	mh_sampler_accept_update(sampler);
-	
-	ERR_OUTPUT("INITIAL SAMPLE: \n");
-	for (int i = 0; i < sampler->num_of_vertices; ++i) {
-		ERR_OUTPUT("vertex %d = %f\n", i,  sampler->value[i]);
+	/* clean up internal data */
+	if (!state) {
+		//ERR_OUTPUT("clearing internal data\n");
+		mh_sampler_destroy(mh_sampler);
+		*internal_data_ptr = 0;
+		return PP_SAMPLE_FUNCTION_NORMAL;
 	}
-	ERR_OUTPUT("\n");
 
-	for (int k = 1; k <= g_sample_iterations + g_mh_sampler_burn_in_iterations; ++k) {
+	/* first invocation or invocation on other model */
+	if (!mh_sampler || !mh_sampler_has_same_model(mh_sampler, state, model_name, param, query)) {
+		//ERR_OUTPUT("creating internal data\n");
+		mh_sampler = new_mh_sampler(state, model_name, param, query);
+		*internal_data_ptr = mh_sampler;
+		//FIXME what if !mh_sampler_has_same_model ?? possible memory leak!!
 
-		int erp_id = mh_sampler_get_random_erp(sampler);
-		struct BNVertexDraw* vertexDraw = (struct BNVertexDraw*) pp_instance_vertex(instance, erp_id);
-				
-		ERR_OUTPUT("round %d, vertex_addr = 0x%08x, erp_id = %d, vertexType = %d, value = %f\n", k, vertexDraw, erp_id, vertexDraw->type, vertexDraw->super.sample);
-
-		float new_sample;
-		float new_ll; 
-		float F, R;
-		float acceptance_rate;
-
-		switch (vertexDraw->type) {
-		case FLIP:
-		case LOG_FLIP:
-			
-			if (rand() < (RAND_MAX >> 1)) {
-				new_sample = sampler->value[erp_id];
-				new_ll = sampler->log_likelihood[erp_id];
-				F = 0.5;
-				R = 0.5;
-			}
-
-			else {
-				new_sample = 1 - sampler->value[erp_id];
-				if (vertexDraw->type == FLIP) {
-					new_ll = flip_logprob(new_sample, sampler->param[erp_id][0]);
-				}
-
-				else {
-					new_ll = log_flip_logprob(new_sample, sampler->param[erp_id][0]);
-				}
-				F = 0.5;
-				R = 0.5;
-			}
-
-			break;
-
-		default:
-		
-			new_sample = uniform(sampler->value[erp_id] - 1, sampler->value[erp_id] + 1);
-			F = R = 0;
-
-			//new_sample = uniform(sampler->value[erp_id] - fabs(sampler->value[erp_id]) / 2 - 1, 
-				//	sampler->value[erp_id] + fabs(sampler->value[erp_id] / 2)) + 1;
-			//F = -log(fabs(sampler->value[erp_id]) + 2);
-			//R = -log(fabs(new_sample) + 2);
-			
-			
-			//new_sample = gaussian(sampler->value[erp_id], 1 + sampler->value[erp_id] * sampler->value[erp_id]);
-			//F = gaussian_logprob(new_sample, sampler->value[erp_id], 1 + sampler->value[erp_id] * sampler->value[erp_id]);
-			//R = gaussian_logprob(sampler->value[erp_id], new_sample, 1 + new_sample * new_sample);
-
-			if (vertexDraw->type == GAUSSIAN) {
-				assert(sampler->param[erp_id]);
-				new_ll = gaussian_logprob(new_sample, sampler->param[erp_id][0], sampler->param[erp_id][1]);
-			}
-
-			else {
-				assert(sampler->param[erp_id]);
-				new_ll = gamma_logprob(new_sample, sampler->param[erp_id][0], sampler->param[erp_id][1]);
-			}
-
-			
-			break;
+		//ERR_OUTPUT("sampling initial trace\n");
+		int status = mh_sampler_init_trace(mh_sampler);
+		if (status != 0) {
+			pp_sample_error_return(status, "");	
 		}
+	}
+
+	/* run mcmc */
+	for (unsigned i = 0; i != g_mh_sampler_lag; ++i) {
+		//ERR_OUTPUT("step\n");
+		int status = mh_sampler_step(mh_sampler);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			pp_sample_error_return(status, "");
+		}
+
+		/*static char buffer[8000];
+		pp_trace_dump(mh_sampler->current_trace, buffer, 8000);
+		printf("%s\n"); */
+
+		*trace_ptr = pp_trace_clone((pp_trace_t*) mh_sampler->current_trace);
+	}
+
+	pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+}
+
+
+mh_sampler_t* new_mh_sampler(pp_state_t* state, const char* name, pp_variable_t* param[], pp_query_t* query) {
+	mh_sampler_t* mh_sampler = malloc(sizeof(mh_sampler_t));
+
+	mh_sampler->state = state;
+	mh_sampler->model_name = strdup(name);
+	mh_sampler->model = 0;
+	mh_sampler->param = param;	// FIXME param may need deep copy
+	mh_sampler->query = query;
+
+	mh_sampler->loop_index = new_loop_index_stack(0x10);
+	mh_sampler->current_trace = 0;
+
+	return mh_sampler;
+}
+
+int mh_sampler_has_same_model(mh_sampler_t* mh_sampler, pp_state_t* state, const char* name, pp_variable_t* param[], pp_query_t* query) {
+	// FIXME check whether the parameters and the query both match
+	return (state == mh_sampler->state) && (!strcmp(name, mh_sampler->model_name));
+}
+
+int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
+	/* find the model */
+	ModelNode* model = model_map_find(mh_sampler->state->model_map, mh_sampler->state->symbol_table, mh_sampler->model_name);
+	if (!model) {
+		pp_sample_error_return(PP_SAMPLE_FUNCTION_MODEL_NOT_FOUND, ": %s", mh_sampler->model_name);
+	}
+	mh_sampler->model = model;
+
+	mh_sampling_trace_t* trace = 0;
+	unsigned round_ = 0;
+	unsigned max_initial_round = g_mh_sampler_maximum_initial_round;
+	while (round_ < max_initial_round) {
 		
-		ERR_OUTPUT("trace update with new_value = %f, ll = %f\n", new_sample, new_ll);
-		mh_sampler_trace_update_with_new_value(sampler, mh_get_name(sampler->instance, erp_id), new_sample, new_ll, sampler->param[erp_id]);
+		/* initialize trace */
+		trace = new_mh_sampling_trace();
 
+		/* set up parameters */
+		ModelParamsNode* param_node = model->params;
+		pp_variable_t** param = mh_sampler->param;
+		while (param_node) {
+			const char* varname = symbol_to_string(node_symbol_table(param_node), param_node->name);
+			pp_trace_set_variable((pp_trace_t*) trace, varname, *(param++));
+			param_node = param_node->model_params;
+		}
 
-		ERR_OUTPUT("new_ll = %f, ll = %f, R = %f, F = %f, size_of_db = %d, new_size_of_db = %d, ll_stale = %f, ll_fresh = %f\n",
-				sampler->new_ll, sampler->ll, R, F, sampler->size_of_db, sampler->new_size_of_db, sampler->ll_stale, sampler->ll_fresh);
-		acceptance_rate = sampler->new_ll - sampler->ll + R - F + log((float)(sampler->size_of_db) / (float)(sampler->new_size_of_db)) + sampler->ll_stale - sampler->ll_fresh;
+		/* ignore the declarations */
 
-		float random_value = log(randomR());
-		ERR_OUTPUT("log(randomR()) = %f, acceptance_rate = %f\n", random_value, acceptance_rate);
+		/* execute statements */
+		StmtsNode* stmts = model->stmts;
+		while (stmts) {
+			StmtNode* stmt = stmts->stmt;
 
-		/* debug output */
-			for (int i = 0; i < sampler->num_of_erps; ++i) {
-				fprintf(transition_out, "%f ", sampler->value[sampler->erps[i]]);
+			int status = mh_sampler_execute_stmt(mh_sampler, stmt, (pp_trace_t*) trace);
+			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+				mh_sampling_trace_destroy(trace);
+				pp_sample_error_return(status, "");
 			}
-		/* debug output */
+			stmts = stmts->stmts;
+		}
 
-		if (random_value < acceptance_rate) {
-			mh_sampler_accept_update(sampler);
+		/* check conditions */
+		if (pp_query_acceptor((pp_trace_t*) trace, mh_sampler->query)) {
+			mh_sampler->current_trace = trace;
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+		else {
+			mh_sampling_trace_destroy(trace);
+		}
+	}
+
+	pp_sample_error_return(PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE, ": maximum initial round %d is reached", max_initial_round);
+}
+
+int mh_sampler_execute_draw_stmt(mh_sampler_t* sampler, DrawStmtNode* stmt, pp_trace_t* p_trace) {
+	assert(p_trace->struct_size == sizeof(mh_sampling_trace_t));
+	mh_sampling_trace_t* trace = (mh_sampling_trace_t*) p_trace;
+
+	/* step run */
+	if (sampler->current_trace) {
+		const mh_sampling_name_t stmt_name = mh_sampling_get_name(stmt, sampler->loop_index);
+		mh_sampling_erp_hash_table_node_t* old_erp_node = mh_sampling_erp_hash_table_find_node(sampler->current_trace->erp_hash_table, stmt_name);
+		mh_sampling_erp_hash_table_node_t* new_erp_node = mh_sampling_erp_hash_table_get_node(trace->erp_hash_table, stmt_name);
+
+		/* no previous sample found */
+		if (!old_erp_node) {
+			/* get new sample */
+			int status = mh_sampling_get_new_sample(stmt, p_trace, &(new_erp_node->value));
+			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+				pp_sample_error_return(status, "");
+			}
+
+			sampler->ll_fresh += new_erp_node->value->logprob;
 		}
 
 		else {
-			mh_sampler_discard_update(sampler);
-		}
-
-		/* debug output 
-			for (int i = 0; i < sampler->num_of_erps; ++i) {
-				fprintf(transition_out, "%f ", sampler->value[sampler->erps[i]]);
+			int status = mh_sampling_reuse_old_sample(stmt, p_trace, old_erp_node->value, &(new_erp_node->value));
+			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+				pp_sample_error_return(status, "");
 			}
-			fprintf(transition_out, "\n");
-		/* debug output */
-
-		ERR_OUTPUT("SAMPLE: \n");
-		for (int i = 0; i < sampler->num_of_erps; ++i) {
-			ERR_OUTPUT("vertex %d = %f\n", sampler->erps[i], sampler->value[sampler->erps[i]]);
+			/* rescoring has been doen in mh_sampling_reuse_old_sample */
+			sampler->ll_stale -= old_erp_node->value->logprob;
 		}
 
-		ERR_OUTPUT("\n");
-
-		if (k > g_mh_sampler_burn_in_iterations && k % g_mh_sampler_lag == 0) {
-			if (condition_acceptor(instance, name_to_value_F, raw_data)) {
-				add_trace(instance, add_trace_data);
-			}
-		}
-
+		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 	}
 
-		/* debug output */
-			fclose(transition_out);
-		/* debug output */
+	/* initialization run */
+	else {
+		const mh_sampling_name_t stmt_name = mh_sampling_get_name(stmt, sampler->loop_index);
+		mh_sampling_sample_t** sample_ptr = &(mh_sampling_erp_hash_table_get_node(trace->erp_hash_table, stmt_name)->value);
+
+		int status = mh_sampling_get_new_sample(stmt, p_trace, sample_ptr);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			pp_sample_error_return(status, "");
+		}
+
+		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+	}
+}
+
+int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_trace_t* p_trace) {
+	assert(p_trace->struct_size == sizeof(mh_sampling_trace_t));
+	mh_sampling_trace_t* trace = (mh_sampling_trace_t*) p_trace;
+
+	pp_variable_t** loop_var_ptr = &(pp_trace_get_variable(trace, symbol_to_string(node_symbol_table(stmt), stmt->name)));
+
+	pp_variable_t* loop_var = 0;
+	int status = execute_expr(stmt->start_expr, (pp_trace_t*) trace, &loop_var);
+	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+		pp_sample_error_return(status, "");
+	}
+	if (loop_var->type != INT) {
+		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
+	}
+
+	pp_variable_t* end_var = 0;
+	status = execute_expr(stmt->end_expr, (pp_trace_t*) trace, &end_var);
+	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+		pp_variable_destroy(loop_var);
+		pp_sample_error_return(status, "");
+	}
+	if (end_var->type != INT) {
+		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
+	}
+
+	*loop_var_ptr = loop_var;
+	for (; PP_VARIABLE_INT_VALUE(*loop_var_ptr) < PP_VARIABLE_INT_VALUE(end_var); ++PP_VARIABLE_INT_VALUE(*loop_var_ptr)) {
+		loop_index_stack_push(mh_sampler->loop_index, PP_VARIABLE_INT_VALUE(*loop_var_ptr));
+		StmtsNode* stmts = stmt->stmts;
+		while (stmts) {
+			status = mh_sampler_execute_stmt(mh_sampler, stmts->stmt, (pp_trace_t*) trace);
+			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+				pp_variable_destroy(end_var);
+				loop_index_stack_pop(mh_sampler->loop_index);
+				pp_sample_error_return(status, "");
+			}
+			stmts = stmts->stmts;
+		}
+		loop_index_stack_pop(mh_sampler->loop_index);
+	}
+
+	pp_variable_destroy(end_var);
+	pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);	
+}
+
+int mh_sampler_execute_stmt(mh_sampler_t* mh_sampler, StmtNode* stmt, pp_trace_t* trace) {
+	assert(trace->struct_size == sizeof(mh_sampling_trace_t));
+
+	if (!stmt) {
+		pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_STATEMENT, "");
+	}
+
+	switch (stmt->type) {
+	case DRAW_STMT:
+		pp_sample_return(mh_sampler_execute_draw_stmt(mh_sampler, (DrawStmtNode*) stmt, trace));
+	case LET_STMT:
+		pp_sample_return(execute_let_stmt((LetStmtNode*) stmt, trace));
+	case FOR_STMT:
+		pp_sample_return(mh_sampler_execute_for_stmt(mh_sampler, (ForStmtNode*) stmt, trace));
+	}
+
+	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+}
+
+int mh_sampler_step(mh_sampler_t* mh_sampler) {
+	if (!mh_sampling_erp_hash_table_size(mh_sampler->current_trace->erp_hash_table)) {
+		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);	// no randomness
+	}
+
+	mh_sampling_erp_hash_table_node_t* erp_entry = mh_sampling_trace_randomly_pick_one_erp(mh_sampler->current_trace);
+	DrawStmtNode* erp_node = (DrawStmtNode*) mh_sampling_name_to_node(erp_entry->key);
+
+	mh_sampling_kernel_t kernel = mh_sampling_random_walk;
+	mh_sampling_sample_t* new_sample = 0;
+	float F = 0.0;
+	float R = 0.0; 
+	{
+		int status = kernel(erp_node, erp_entry->value, &new_sample, &F, &R);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			pp_sample_error_return(status, "");
+		}
+	}
+	
+	/* note: old_sample->value is managed in current_trace->variable_hash_table, but
+		new_sample->value is not. new_sample->value needs to be freed manually. */
+	mh_sampling_sample_t* old_sample = erp_entry->value;
+	erp_entry->value = new_sample;	
+
+	ModelNode* model = mh_sampler->model;
+	pp_variable_t** param = mh_sampler->param;
+	pp_query_t* query = mh_sampler->query;
+
+	/* initialize new trace */
+	mh_sampling_trace_t* new_trace = new_mh_sampling_trace();
+	mh_sampler->ll_stale = ((pp_trace_t*) mh_sampler->current_trace)->logprob - old_sample->logprob + new_sample->logprob;
+	mh_sampler->ll_fresh = 0.0;
+
+	/* set up parameters */
+	ModelParamsNode* param_node = model->params;
+	while (param_node) {
+		const char* varname = symbol_to_string(node_symbol_table(param_node), param_node->name);
+		pp_trace_set_variable((pp_trace_t*) new_trace, varname, *(param++));
+		param_node = param_node->model_params;
+	}
+
+	/* ignore the declarations */
+
+	/* execute statements */
+	StmtsNode* stmts = model->stmts;
+	while (stmts) {
+		StmtNode* stmt = stmts->stmt;
+
+		int status = mh_sampler_execute_stmt(mh_sampler, stmt, (pp_trace_t*) new_trace);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			erp_entry->value = old_sample;
+			pp_variable_destroy(new_sample->value);
+			mh_sampling_sample_destroy(new_sample);
+			mh_sampling_trace_destroy(new_trace);
+			pp_sample_error_return(status, "");
+		}
+		stmts = stmts->stmts;
+	}
+
+	/* recover old trace */
+	erp_entry->value = old_sample;
+	pp_variable_destroy(new_sample->value);
+	mh_sampling_sample_destroy(new_sample);
+
+	/* reject invaid runs */
+	if (!pp_query_acceptor((pp_trace_t*) new_trace, query)) {
+		((pp_trace_t*) new_trace)->logprob = -INFINITY;
+	}
+
+	float acceptance_rate = ((pp_trace_t*) new_trace)->logprob - ((pp_trace_t*) mh_sampler->current_trace)->logprob
+							+ R - F + log(variable_hash_table_size(((pp_trace_t*) mh_sampler->current_trace)->variable_map))
+							- log(variable_hash_table_size(((pp_trace_t*) new_trace)->variable_map)) + mh_sampler->ll_stale
+							- mh_sampler->ll_fresh;
+	float randomness = log(randomR());
+	if (randomness < acceptance_rate) {
+		/* accept */
+		mh_sampling_trace_destroy(mh_sampler->current_trace);
+		mh_sampler->current_trace = new_trace;
+	}
+	else {
+		/* reject */
+		mh_sampling_trace_destroy(new_trace);
+	}
+
+	pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+}
+
+void mh_sampler_destroy(mh_sampler_t* mh_sampler) {
+	free(mh_sampler->model_name);
+
+	loop_index_stack_destroy(mh_sampler->loop_index);
+	free(mh_sampler);
+}
+
+const mh_sampling_name_t mh_sampling_get_name(void* node, loop_index_stack_t* loop_index) {
+	#define MH_SAMPLING_GET_NAME_BUFFER_SIZE 100
+	#define MH_SAMPLING_GET_NAME_PRINT(buffer, buf_size, ...)	\
+		num_written += \
+		snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, __VA_ARGS__)
+
+	static char buffer[MH_SAMPLING_GET_NAME_BUFFER_SIZE];
+	static char* buffer_ptr = 0;
+	
+	if (buffer_ptr) {
+		free(buffer_ptr);
+		buffer_ptr = 0;
+	}
+
+	size_t num_written = 0;
+	MH_SAMPLING_GET_NAME_PRINT(buffer, MH_SAMPLING_GET_NAME_BUFFER_SIZE, "%08x", (unsigned) node);
+	for (size_t i = 0, end = loop_index_stack_size(loop_index); i != end; ++i) {
+		MH_SAMPLING_GET_NAME_PRINT(buffer, MH_SAMPLING_GET_NAME_BUFFER_SIZE, " %d", loop_index->data[i]);
+	}
+
+	if (num_written + 1 > MH_SAMPLING_GET_NAME_BUFFER_SIZE) {
+		/* failed to print the complete name due to buffer size limitation */
+		size_t limit = num_written + 1;
+		num_written = 0;
+		buffer_ptr = malloc(limit * sizeof(char));
+
+		MH_SAMPLING_GET_NAME_PRINT(buffer_ptr, MH_SAMPLING_GET_NAME_BUFFER_SIZE, "%08x", (unsigned) node);
+		for (size_t i = 0, end = loop_index_stack_size(loop_index); i != end; ++i) {
+			MH_SAMPLING_GET_NAME_PRINT(buffer_ptr, MH_SAMPLING_GET_NAME_BUFFER_SIZE, " %d", loop_index->data[i]);
+		}
+
+		return buffer_ptr;
+	}
+
+	return buffer;
+
+	#undef MH_SAMPLING_GET_NAME_BUFFER_SIZE
+	#undef MH_SAMPLING_GET_NAME_PRINT
+}
+
+void* mh_sampling_name_to_node(const char* name) {
+	void* ret = 0;
+	sscanf(name, "%x", &ret);
+	return ret;
+}
+
+mh_sampling_sample_t* new_mh_sampling_sample(pp_variable_t* value, float logprob, size_t num_param, ...) {
+	mh_sampling_sample_t* sample = malloc(sizeof(mh_sampling_sample_t) + sizeof(pp_variable_t*) * num_param);
+	sample->value = value;
+	sample->logprob = logprob;
+	sample->num_param = num_param;
+
+	va_list args;
+	va_start(args, num_param);
+	for (size_t i = 0; i != num_param; ++i) {
+		sample->param[i] = va_arg(args, pp_variable_t*);
+	}
+	va_end(args);
+
+	return sample;
+}
+
+int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampling_sample_t** sample_ptr) {
+	pp_variable_t** result_ptr = 0;
+	{
+		int status = get_variable_ptr(stmt->variable, trace, &result_ptr);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			pp_sample_error_return(status, "");
+		}
+	}
+
+	#define EXECUTE_DRAW_STMT_GET_PARAM(n)	\
+		pp_variable_t** param = 0;	\
+	do {	\
+		int status = get_parameters(stmt->expr_seq, trace, n, &param);	\
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {	\
+			pp_sample_error_return(status, "");	\
+		}	\
+	} while(0) 
+
+	#define EXECUTE_DRAW_STMT_CONVERT_PARAM(i, type, name, pp_type)	\
+		type name = pp_variable_to_##pp_type (param[ i ])
+
+	#define EXECUTE_DRAW_STMT_CLEAR(n)	\
+	do {	\
+		for (size_t i = 0; i < n; ++i) {	\
+			pp_variable_destroy(param[i]);	\
+		}	\
+		free(param);	\
+	} while(0)
+
+	switch (stmt->dist_type) {
+	case ERP_FLIP:
+		{
+			EXECUTE_DRAW_STMT_GET_PARAM(1);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, p, float);
+			EXECUTE_DRAW_STMT_CLEAR(1);
+
+			int sample = flip(p);
+			float logprob = flip_logprob(sample, p);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = new_pp_int(sample);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, new_pp_float(p));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+	case ERP_MULTINOMIAL:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_UNIFORM:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_GAUSSIAN:
+		{
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, mu, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, sigma, float);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float sample = gaussian(mu, sigma);
+			float logprob = gaussian_logprob(sample, mu, sigma);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = new_pp_float(sample);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(mu), new_pp_float(sigma));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+	case ERP_GAMMA:
+		{
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, a, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, b, float);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float sample = gamma1(a, b);
+			float logprob = gamma_logprob(sample, a, b);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = new_pp_float(sample);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(a), new_pp_float(b));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+		break;
+	case ERP_BETA:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_BINOMIAL:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_POISSON:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_DIRICHLET:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	}
+
+	#undef EXECUTE_DRAW_STMT_GET_PARAM
+	#undef EXECUTE_DRAW_STMT_CONVERT_PARAM
+	#undef EXECUTE_DRAW_STMT_CLEAR
+
+	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+}
+
+int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampling_sample_t* old_sample, mh_sampling_sample_t** sample_ptr) {
+
+	pp_variable_t** result_ptr = 0;
+	{
+		int status = get_variable_ptr(stmt->variable, trace, &result_ptr);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			pp_sample_error_return(status, "");
+		}
+	}
+	*result_ptr = pp_variable_clone(old_sample->value);
+
+	#define EXECUTE_DRAW_STMT_GET_PARAM(n)	\
+		pp_variable_t** param = 0;	\
+	do {	\
+		int status = get_parameters(stmt->expr_seq, trace, n, &param);	\
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {	\
+			pp_sample_error_return(status, "");	\
+		}	\
+	} while(0) 
+
+	#define EXECUTE_DRAW_STMT_CONVERT_PARAM(i, type, name, pp_type)	\
+		type name = pp_variable_to_##pp_type (param[ i ])
+
+	#define EXECUTE_DRAW_STMT_CLEAR(n)	\
+	do {	\
+		for (size_t i = 0; i < n; ++i) {	\
+			pp_variable_destroy(param[i]);	\
+		}	\
+		free(param);	\
+	} while(0)
+
+	switch (stmt->dist_type) {
+	case ERP_FLIP:
+		{
+			EXECUTE_DRAW_STMT_GET_PARAM(1);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, p, float);
+			EXECUTE_DRAW_STMT_CLEAR(1);
+
+			int sample = PP_VARIABLE_INT_VALUE(*result_ptr);
+			float logprob = flip_logprob(sample, p);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, new_pp_float(p));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+	case ERP_MULTINOMIAL:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_UNIFORM:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_GAUSSIAN:
+		{
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, mu, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, sigma, float);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float sample = PP_VARIABLE_FLOAT_VALUE(*result_ptr);
+			float logprob = gaussian_logprob(sample, mu, sigma);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(mu), new_pp_float(sigma));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+	case ERP_GAMMA:
+		{
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, a, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, b, float);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float sample = PP_VARIABLE_FLOAT_VALUE(*result_ptr); 
+			float logprob = gamma_logprob(sample, a, b);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(a), new_pp_float(b));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+		break;
+	case ERP_BETA:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_BINOMIAL:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_POISSON:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	case ERP_DIRICHLET:
+		{
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		}
+	}
+
+	#undef EXECUTE_DRAW_STMT_GET_PARAM
+	#undef EXECUTE_DRAW_STMT_CONVERT_PARAM
+	#undef EXECUTE_DRAW_STMT_CLEAR
+
+	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+}
+
+int mh_samling_sample_has_same_param(mh_sampling_sample_t* lhs, mh_sampling_sample_t* rhs) {
+	size_t num_param = lhs->num_param;
+	if (num_param != rhs->num_param) {
+		return 0;
+	}
+
+	size_t i;
+	for ( i = 0; i != num_param; ++i) {
+		if (!pp_variable_equal(lhs->param[i], rhs->param[i])) {
+			break;
+		}
+	}
+	return i == num_param;
+}
+
+mh_sampling_sample_t* mh_sampling_sample_clone(mh_sampling_sample_t* sample) {
+	mh_sampling_sample_t* new_sample = malloc(sizeof(mh_sampling_sample_t) + sizeof(pp_variable_t*) * sample->num_param);
+	new_sample->value = sample->value;
+	new_sample->logprob = sample->logprob;
+	new_sample->num_param = sample->num_param;
+
+	for (size_t i = 0; i != sample->num_param; ++i) {
+		new_sample->param[i] = pp_variable_clone(sample->param[i]);
+	}
+
+	return new_sample;
+}
+
+void mh_sampling_sample_destroy(mh_sampling_sample_t* sample) {
+	for (size_t i = 0; i != sample->num_param; ++i) {
+		pp_variable_destroy(sample->param[i]);
+	}
+	free(sample);
+}
+
+int mh_sampling_random_walk(DrawStmtNode* node, mh_sampling_sample_t* sample, mh_sampling_sample_t** result_ptr, float* F, float* R) {
+	switch (node->dist_type) {
+    case ERP_FLIP:
+    	{
+    		mh_sampling_sample_t* result = mh_sampling_sample_clone(sample);
+    		if (rand() < (RAND_MAX >> 1)) {
+    			result->value = pp_variable_clone(sample->value);
+    			result->logprob = sample->logprob;
+    		}
+    		else {
+    			int new_value = 1 - PP_VARIABLE_INT_VALUE(sample->value);
+    			result->value = new_pp_int(new_value);
+    			result->logprob = flip_logprob(new_value, PP_VARIABLE_FLOAT_VALUE(sample->param[0]));
+    		}
+    		*result_ptr = result;
+    		*F = 0.5;
+    		*R = 0.5;
+    		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+    	}
+    	break;
+    case ERP_MULTINOMIAL:
+    	break;
+    case ERP_UNIFORM:
+    	break;
+    case ERP_GAUSSIAN:
+    	{
+    		mh_sampling_sample_t* result = mh_sampling_sample_clone(sample);
+    		float old_value = PP_VARIABLE_FLOAT_VALUE(sample->value);
+    		float new_value = uniform(old_value - 1, old_value + 1);
+    		*F = *R = 0.5;
+    		result->value = new_pp_float(new_value);
+    		result->logprob = gaussian_logprob(new_value, PP_VARIABLE_FLOAT_VALUE(sample->param[0]), PP_VARIABLE_FLOAT_VALUE(sample->param[1]));
+    		*result_ptr = result;
+    		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+    	}
+    	break;
+    case ERP_GAMMA:
+    	{
+    		mh_sampling_sample_t* result = mh_sampling_sample_clone(sample);
+    		float old_value = PP_VARIABLE_FLOAT_VALUE(sample->value);
+    		float new_value = uniform(old_value - 1, old_value + 1);
+    		*F = *R = 0.5;
+    		result->value = new_pp_float(new_value);
+    		result->logprob = gamma_logprob(new_value, PP_VARIABLE_FLOAT_VALUE(sample->param[0]), PP_VARIABLE_FLOAT_VALUE(sample->param[1]));
+    		*result_ptr = result;
+    		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+    	}
+    	break;
+    case ERP_BETA:
+    	break;
+    case ERP_BINOMIAL:
+    	break;
+    case ERP_POISSON:
+    	break;
+    case ERP_DIRICHLET:
+    	break;
+	}
+	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, ": erp %s", erp_name(node->dist_type));
+}
+
+unsigned bkdr_hash(const char* str);
+#define HASH_TABLE_HASH_FUNCTION(key) (bkdr_hash(key))
+#define HASH_TABLE_COMPARATOR(key1, key2) (!strcmp(key1, key2))
+#define HASH_TABLE_DESTROY_KEY(key) free(key)
+#define HASH_TABLE_DESTROY_VALUE(value) mh_sampling_sample_destroy(value)
+#define HASH_TABLE_KEY_NOT_FOUND_VALUE 0
+#define HASH_TABLE_VALUE_DEFAULT 0
+#define HASH_TABLE_DUMP_KEY(buffer, buf_size, key) \
+	dump_draw_stmt_impl(buffer, buf_size, (DrawStmtNode*) mh_sampling_name_to_node(key))
+#define HASH_TABLE_DUMP_VALUE(buffer, buf_size, val) \
+	pp_variable_dump((val)->value, buffer, buf_size)
+#define HASH_TABLE_CLONE_KEY(key) strdup(key)
+#define HASH_TABLE_CLONE_VALUE(value) mh_sampling_sample_clone(value)
+DEFINE_HASH_TABLE(mh_sampling_erp, char*, mh_sampling_sample_t*)
+#undef HASH_TABLE_HASH_FUNCTION
+#undef HASH_TABLE_COMPARATOR
+#undef HASH_TABLE_DESTROY_KEY
+#undef HAHS_TABLE_DESTROY_VALUE
+#undef HASH_TABLE_KEY_NOT_FOUND_VALUE
+#undef HASH_TABLE_VALUE_DEFAULT
+#undef HASH_TABLE_KEY_DUMP_FUNCTION
+#undef HASH_TABLE_VALUE_DUMP_FUNCTION
+#undef HASH_TABLE_CLONE_KEY
+#undef HASH_TABLE_CLONE_VALUE
+
+mh_sampling_trace_t* new_mh_sampling_trace() {
+	mh_sampling_trace_t* trace = malloc(sizeof(mh_sampling_trace_t));
+	pp_trace_init((pp_trace_t*) trace, sizeof(mh_sampling_trace_t));
+
+	trace->erp_hash_table = new_mh_sampling_erp_hash_table(0x10000);	
+
+	return trace;
+}
+
+mh_sampling_erp_hash_table_node_t* mh_sampling_trace_randomly_pick_one_erp(mh_sampling_trace_t* trace) {
+	size_t i = ((((unsigned) rand()) << 16) + ((unsigned) rand())) % mh_sampling_erp_hash_table_size(trace->erp_hash_table) + 1;
+
+	for (size_t j = 0, tar = trace->erp_hash_table->capacity + 1; j != tar; ++j) {
+		mh_sampling_erp_hash_table_node_t* node = trace->erp_hash_table->node[j];
+		while (node) {
+			if (!--i) return node;
+			node = node->next;
+		}
+	}
+	ERR_OUTPUT("WARNING: randomly pick one erp failed\n");
 	return 0;
 }
 
-mh_sampler_t* mh_sampler_init(struct pp_instance_t* instance) {
-	mh_sampler_t *sampler = malloc(sizeof(mh_sampler_t));
-	int n = pp_instance_num_vertices(instance);	// number of vertices
-	
-	sampler->num_of_vertices = n;
-	sampler->instance = instance;
+void mh_sampling_trace_destroy(mh_sampling_trace_t* trace) {
+	assert(trace->super.struct_size == sizeof(mh_sampling_trace_t));
+	mh_sampling_erp_hash_table_destroy(trace->erp_hash_table);
 
-	sampler->value = malloc(sizeof(float) * n);
-	sampler->log_likelihood = malloc(sizeof(float) * n);
-	sampler->param = calloc(n, sizeof(float*));	// NULL indicates not in the DB
-	//sampler->ll
-	sampler->size_of_db = 0;
-	
-	int num_of_erps = 0; // just go through the vertices twice. 
-	for (int i = 0; i < n; ++i){
-		if (pp_instance_vertex(instance, i)->type == BNV_DRAW){
-			++num_of_erps;
-		}
-	}
-
-	sampler->num_of_erps = num_of_erps;
-	sampler->erps = malloc(sizeof(int) * num_of_erps);
-
-	num_of_erps = 0;
-	for (int i = 0; i < n; ++i){
-		//printf("%d: ", i);
-		//dump_vertex(pp_instance_vertex(instance, i));
-
-		if (pp_instance_vertex(instance, i)->type == BNV_DRAW){
-			sampler->erps[num_of_erps++] = i;
-		}
-	}
-
-	/*printf("erps:\n");	
-	for (int i = 0; i < num_of_erps; ++i) {
-		printf("%d: ", sampler->erps[i]);
-		dump_vertex(pp_instance_vertex(instance, sampler->erps[i]));
-	}*/
-
-	sampler->new_value = malloc(sizeof(float) * n);
-	sampler->new_log_likelihood = malloc(sizeof(float) * n);
-	sampler->new_param = calloc(n, sizeof(float*));
-	//sampler->new_ll, sampler->ll_stale, sampler->ll_fresh
-	sampler->new_size_of_db = 0;
-
-	return sampler;
+	trace->super.struct_size = sizeof(pp_trace_t);
+	pp_trace_destroy((pp_trace_t*) trace);
 }
-
-void mh_sampler_free(mh_sampler_t* sampler){
-	free(sampler->value);
-	free(sampler->log_likelihood);
-	
-	for (int i = 0; i < sampler->num_of_vertices; ++i){
-		if (sampler->param[i])
-			free(sampler->param[i]);
-
-		if (sampler->new_param[i])
-			free(sampler->new_param[i]);
-	}
-
-	free(sampler->param);
-	free(sampler->erps);
-
-	free(sampler->new_value);
-	free(sampler->new_log_likelihood);
-	free(sampler->new_param);	// new_param[i] was freed above
-
-	free(sampler);
-}
-
-void mh_sampler_trace_update(mh_sampler_t* sampler){
-	sampler->new_ll = 0.0;
-	sampler->ll_stale = 0.0;
-	sampler->ll_fresh = 0.0;
-
-	for (int i = 0; i < sampler->num_of_vertices; ++i) {
-		struct BNVertex* vertex = pp_instance_vertex(sampler->instance, i);
-
-		switch (vertex->type){
-		case BNV_CONST:
-			// do nothing			
-			break;
-
-		case BNV_DRAW:
-			vertex->sample = mh_sampler_get_sample(sampler, i, (struct BNVertexDraw*) vertex);	
-			break;
-
-		case BNV_COMPU:
-			vertex->sample = mh_sampler_get_compute(sampler, i, (struct BNVertexCompute*) vertex);
-			sampler->new_value[i] = vertex->sample;
-			break;
-
-		default:
-			ERR_OUTPUT("Unknown BNVertex type: %d\n", vertex->type);
-			return ;
-		}
-	}
-}
-
-void mh_sampler_trace_update_with_new_value(mh_sampler_t* sampler, mh_name_t name, float value, float log_likelihood, float* param){
-	if (!sampler->new_param[name]){
-		++sampler->new_size_of_db;
-	}
-
-	sampler->new_value[name] = value;
-	sampler->new_log_likelihood[name] = log_likelihood;
-	
-	mh_update_param( &(sampler->new_param[name]), param, mh_number_of_param((struct BNVertexDraw*) pp_instance_vertex(sampler->instance, name)) );
-
-	mh_sampler_trace_update(sampler);
-}
-
-float mh_sampler_get_sample(mh_sampler_t* sampler, int vertex_index, struct BNVertexDraw* vertexDraw) {
-
-	int num_of_param = mh_number_of_param(vertexDraw);
-	float current_param[num_of_param];
-
-	mh_sampler_get_current_param(sampler, current_param, vertexDraw);
-
-	if (sampler->new_param[vertex_index]){
-		// a previously sampled value is found
-		
-		if ( ! mh_param_equal(sampler->new_param[vertex_index], current_param, num_of_param)) {
-			mh_update_param( &(sampler->new_param[vertex_index]), current_param, num_of_param);				
-			sampler->new_log_likelihood[vertex_index] = mh_log_likelihood(vertexDraw, sampler->new_value[vertex_index], current_param);
-		}
-	}
-
-	else {
-		// no previously sampled value
-		
-		sampler->new_value[vertex_index] = getsample(vertexDraw);
-		mh_update_param( &(sampler->new_param[vertex_index]), current_param, num_of_param);
-		sampler->new_log_likelihood[vertex_index] = mh_log_likelihood(vertexDraw, sampler->new_value[vertex_index], current_param);
-
-		sampler->ll_fresh += sampler->new_log_likelihood[vertex_index];
-		++sampler->new_size_of_db;
-	}
-
-	sampler->new_ll += sampler->new_log_likelihood[vertex_index];
-	return sampler->new_value[vertex_index];
-}
-
-float mh_sampler_get_compute(mh_sampler_t* sampler, int vertex_index, struct BNVertexCompute* vertexComp) {
-
-    switch (vertexComp->type) {
-        case BNVC_BINOP: {
-            struct BNVertexComputeBinop* vertexBinop = (struct BNVertexComputeBinop*)vertexComp;
-            switch (vertexBinop->binop) {
-                case BINOP_PLUS:
-                    return vertexBinop->left->sample + vertexBinop->right->sample;
-                case BINOP_SUB:
-                    return vertexBinop->left->sample - vertexBinop->right->sample;
-                case BINOP_MULTI:
-                    return vertexBinop->left->sample * vertexBinop->right->sample;
-                case BINOP_DIV:
-                    return vertexBinop->left->sample / vertexBinop->right->sample;
-            }
-            return 0;
-        }
-        case BNVC_IF: {
-            struct BNVertexComputeIf* vertexIf = (struct BNVertexComputeIf*)vertexComp;
-			struct BNVertex *taken, *not_taken;
-            if (vertexIf->condition->sample) {
-				taken = vertexIf->consequent;
-				not_taken = vertexIf->alternative;
-			}
-            else {
-				taken = vertexIf->alternative;
-				not_taken = vertexIf->consequent;
-			}
-			
-			if (not_taken->type == BNV_DRAW) {
-				int not_taken_index = pp_instance_find_num_of_vertex(sampler->instance, not_taken);
-
-				// remove from db
-				free(sampler->new_param[not_taken_index]);
-				sampler->new_param[not_taken_index] = 0;
-				sampler->ll_stale += sampler->new_log_likelihood[not_taken_index];
-				sampler->new_ll -= sampler->new_log_likelihood[not_taken_index];
-				--sampler->new_size_of_db;
-			}
-
-			return taken->sample;
-        }
-        case BNVC_UNARY: {
-            struct BNVertexComputeUnary* vertex = (struct BNVertexComputeUnary*)vertexComp;
-            if (vertex->op == UNARY_NEG)
-                return -(vertex->primary->sample);
-			if (vertex->op == UNARY_POS)
-				return vertex->primary->sample;
-            return 0;
-        }
-        case BNVC_FUNC: {
-            struct BNVertexComputeFunc* vertex = (struct BNVertexComputeFunc*)vertexComp;
-            if (vertex->func == FUNC_LOG)
-                return log(vertex->args[0]->sample);
-            if (vertex->func == FUNC_EXP)
-                return exp(vertex->args[0]->sample);
-            return 0;
-        }
-        default: return 0;
-    }
-}
-
-void mh_sampler_get_current_param(mh_sampler_t* sampler, float* current_param, struct BNVertexDraw* vertexDraw) {
-
-	switch (vertexDraw->type) {
-	case FLIP:
-	case LOG_FLIP:
-		current_param[0] = ((struct BNVertexDrawBern*) vertexDraw)->p->sample;
-		break;
-
-	case GAUSSIAN:
-		{
-			struct BNVertexDrawNorm* vertexNorm = (struct BNVertexDrawNorm*) vertexDraw;
-			current_param[0] = vertexNorm->mean->sample;
-			current_param[1] = vertexNorm->variance->sample;
-		}
-		break;
-
-	case GAMMA:
-		{
-			struct BNVertexDrawGamma* vertexGamma = (struct BNVertexDrawGamma*) vertexDraw;
-			current_param[0] = vertexGamma->a->sample;
-			current_param[1] = vertexGamma->b->sample;
-		}
-		break;
-	/* FIXME support for more distributions */
-	
-	default:
-		ERR_OUTPUT("Unknown distribution %d\n", vertexDraw->type);
-	}
-}
-
-int mh_sampler_get_random_erp(mh_sampler_t* sampler) {
-	int id = rand() % sampler->num_of_erps;
-
-	while (!sampler->param[sampler->erps[id]]) {
-		id = rand() % sampler->num_of_erps;
-	}
-
-	return sampler->erps[id];	
-}
-
-void mh_sampler_accept_update(mh_sampler_t* sampler) {
-	ERR_OUTPUT("accept update\n");
-	int n = sampler->num_of_vertices;
-
-	memcpy(sampler->value, sampler->new_value, sizeof(float) * n);
-	memcpy(sampler->log_likelihood, sampler->new_log_likelihood, sizeof(float) * n);
-
-	for (int i = 0; i < n; ++i) {
-		struct BNVertex* vertex = (struct BNVertex*) pp_instance_vertex(sampler->instance, i);
-		if (vertex->type == BNV_DRAW) {
-			mh_update_param(&(sampler->param[i]), sampler->new_param[i], mh_number_of_param((struct BNVertexDraw*) vertex));
-		}
-	}
-
-	sampler->ll = sampler->new_ll;
-	sampler->size_of_db = sampler->new_size_of_db;
-}
-
-void mh_sampler_discard_update(mh_sampler_t* sampler) {
-	ERR_OUTPUT("discard update\n");
-	int n = sampler->num_of_vertices;
-
-	memcpy(sampler->new_value, sampler->value, sizeof(float) * n);
-	memcpy(sampler->new_log_likelihood, sampler->log_likelihood, sizeof(float) * n);
-
-	for (int i = 0; i < n; ++i) {
-		struct BNVertex* vertex = (struct BNVertex*) pp_instance_vertex(sampler->instance, i);
-		if (vertex->type == BNV_DRAW) {
-			mh_update_param(&(sampler->new_param[i]), sampler->param[i], mh_number_of_param((struct BNVertexDraw*) vertex));
-			vertex->sample = sampler->value[i];
-		}
-		else if (vertex->type == BNV_COMPU) {
-			vertex->sample = sampler->value[i];
-		}
-	}
-
-	sampler->new_size_of_db = sampler->size_of_db;
-}
-
-/* miscs */
-mh_name_t mh_get_name(struct pp_instance_t* instance, int i) {
-	return i;
-}
-
-int mh_number_of_param(struct BNVertexDraw* vertexDraw){
-
-	switch (vertexDraw->type){
-	case FLIP:
-	case LOG_FLIP:
-		return 1;
-
-	case GAUSSIAN:
-	case GAMMA:
-		return 2;
-
-	default:
-		ERR_OUTPUT("Unknown vertexDraw->type %d\n", vertexDraw->type);	
-	}
-
-	// FIXME support more distributions
-	
-	return 0;
-}
-
-void mh_update_param(float** param, float* new_param, int num_of_param) {
-	
-	if (new_param) {
-		if (!*param){
-			*param = malloc(num_of_param * sizeof(float));
-		}
-		memcpy(*param, new_param, num_of_param * sizeof(float));
-	}
-
-	else {
-		
-		if (*param) {
-			free(*param);
-			*param = 0;
-		}
-	}
-}
-
-int mh_param_equal(float* param1, float* param2, int num_of_param){
-	
-	for ( ; --num_of_param >= 0 && param1[num_of_param] == param2[num_of_param]; );
-	return num_of_param < 0;
-}
-
-float mh_log_likelihood(struct BNVertexDraw* vertexDraw, float value, float* param) {
-	
-	switch (vertexDraw->type){
-	case FLIP:
-		return flip_logprob(value, param[0]);
-
-	case LOG_FLIP:
-		return log_flip_logprob(value, param[0]);
-
-	case GAUSSIAN:
-		return gaussian_logprob(value, param[0], param[1]);
-
-	case GAMMA:
-		return gamma_logprob(value, param[0], param[1]);
-
-	default:
-		ERR_OUTPUT("Unknown vertexDraw->type %d\n", vertexDraw->type);	
-	}
-
-	// FIXME support more distributions
-	
-	return -INFINITY;
-}
-

@@ -3,7 +3,7 @@
 
 ## CC should be exported
 
-all: infer.o erp.o hash_table.o rejection.o trace.o variables.o
+all: infer.o erp.o hash_table.o rejection.o trace.o variables.o execute.o mh_sampler.o
 
 infer.o: infer.h infer.c
 	$(CC) -c infer.c -o infer.o
@@ -25,6 +25,9 @@ variables.o: variables.c variables.h
 
 hash_table.o: hash_table.c hash_table.h hash_table_impl.h
 	${CC} -c hash_table.c -o hash_table.o
+
+execute.o: execute.h execute.c
+	${CC} -c execute.c -o execute.o
 
 clean:
 	rm -f *.o

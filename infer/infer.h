@@ -13,6 +13,7 @@
 #include "variables.h"
 #include "trace.h"
 #include "../query/query.h"
+#include "../debug.h"
 
 enum {
 	PP_SAMPLE_FUNCTION_NORMAL = 0,
@@ -21,7 +22,7 @@ enum {
 	PP_SAMPLE_FUNCTION_INVALID_EXPRESSION,
 	PP_SAMPLE_FUNCTION_NON_SCALAR_TYPE_AS_CONDITION,
 	PP_SAMPLE_FUNCTION_UNHANDLED,
-	PP_SAMPLE_FUNCTION_INVALID_OPEARND_TYPE,
+	PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE,
 	PP_SAMPLE_FUNCTION_VECTOR_LENGTH_MISMATCH,
 	PP_SAMPLE_FUNCTION_DIVISION_BY_ZERO,
 	PP_SAMPLE_FUNCTION_VARIABLE_NOT_FOUND,
@@ -29,10 +30,32 @@ enum {
 	PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION,
 	PP_SAMPLE_FUNCTION_NUMBER_OF_PARAMETER_MISMATCH,
 	PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE,
+
+	PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE,
+
+	PP_SAMPLE_FUNCTION_ERROR_NUM
 };
 
-extern const char* pp_sample_error_string[14];
+extern const char* pp_sample_error_string[PP_SAMPLE_FUNCTION_ERROR_NUM];
 #define pp_sample_get_error_string(status) (pp_sample_error_string[status])
+
+#define pp_sample_error_return(status, fmt, ...) \
+	do {	\
+		ERR_OUTPUT("%s" fmt "\n", pp_sample_get_error_string(status), ##__VA_ARGS__);	\
+		return status;	\
+	} while(0)
+
+#define pp_sample_return(status)	\
+	do {	\
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {	\
+			pp_sample_error_return(status, "");	\
+		}	\
+		else {	\
+			pp_sample_normal_return(status);	\
+		}	\
+	} while(0)
+
+#define pp_sample_normal_return(status)	return PP_SAMPLE_FUNCTION_NORMAL
 
 typedef int (*sample_function_t)(
 	struct pp_state_t* state,

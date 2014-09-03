@@ -6,4 +6,5 @@
 
 DECLARE_HASH_TABLE(variable, const char*, pp_variable_t*)
 
+
 #endif

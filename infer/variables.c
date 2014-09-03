@@ -32,9 +32,13 @@ pp_variable_t* pp_variable_clone(pp_variable_t* variable) {
 
 	switch (variable->type) {
 	case INT:
-		return new_pp_int(PP_VARIABLE_INT_VALUE(variable));
+		{
+			return new_pp_int(PP_VARIABLE_INT_VALUE(variable));
+		}
 	case FLOAT:
-		return new_pp_float(PP_VARIABLE_FLOAT_VALUE(variable));
+		{
+			return new_pp_float(PP_VARIABLE_FLOAT_VALUE(variable));
+		}
 	case VECTOR:
 		{
 			pp_vector_t* vec = (pp_vector_t*) new_pp_vector(PP_VARIABLE_VECTOR_CAPACITY(variable));
@@ -42,7 +46,6 @@ pp_variable_t* pp_variable_clone(pp_variable_t* variable) {
 			for (size_t i = 0; i != length; ++i) {
 				vec->value[vec->length++] = pp_variable_clone(PP_VARIABLE_VECTOR_VALUE(variable)[i]);
 			} 
-
 			return (pp_variable_t*) vec;
 		}
 	}
@@ -139,6 +142,59 @@ int* pp_variable_to_int_vector(pp_variable_t* variable) {
 			return vec;
 		}
 	}
+	return 0;
+}
+
+int pp_variable_equal(pp_variable_t* lhs, pp_variable_t* rhs) {
+	if (!lhs) {
+		return !rhs;
+	}
+
+	switch (lhs->type) {
+	case INT:
+		switch (rhs->type) {
+		case INT:
+			return PP_VARIABLE_INT_VALUE(lhs) == PP_VARIABLE_INT_VALUE(rhs);
+		case FLOAT:
+			return PP_VARIABLE_INT_VALUE(lhs) == PP_VARIABLE_FLOAT_VALUE(rhs);
+		case VECTOR:
+			return 0;	
+		}
+		break;
+	case FLOAT:
+		switch (rhs->type) {
+		case INT:
+			return PP_VARIABLE_FLOAT_VALUE(lhs) == PP_VARIABLE_INT_VALUE(rhs);
+		case FLOAT:
+			return PP_VARIABLE_FLOAT_VALUE(lhs) == PP_VARIABLE_FLOAT_VALUE(rhs);
+		case VECTOR:
+			return 0;	
+		}
+		break;
+	case VECTOR:
+		switch (rhs->type) {
+		case INT:
+			return 0;
+		case FLOAT:
+			return 0;
+		case VECTOR:
+			{
+				size_t length = PP_VARIABLE_VECTOR_LENGTH(lhs);
+				if (length != PP_VARIABLE_VECTOR_LENGTH(rhs)) {
+					return 0;
+				}
+				size_t i;
+				for (i = 0; i != length; ++i) {
+					if (!pp_variable_equal(PP_VARIABLE_VECTOR_VALUE(lhs)[i], PP_VARIABLE_VECTOR_VALUE(rhs)[i])) {
+						break;
+					}
+				}
+				return i == length;
+			}
+		}
+		break;
+	}
+
 	return 0;
 }
 
