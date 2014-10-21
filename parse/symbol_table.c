@@ -45,7 +45,7 @@ symbol_t symbol_table_lookup_symbol(struct symbol_table_t* symbol_table, const c
     symbol_table->last_symbol = table_entry->symbol;
     symbol_table->entry = table_entry;
 
-    /*fprintf(stderr, "symbol_table_lookup_symbol (%d): create a new entry (%s, %u)\n", __LINE__, string, table_entry->symbol); */
+    fprintf(stderr, "symbol_table_lookup_symbol (%d): create a new entry (%s, %u)\n", __LINE__, string, table_entry->symbol);
     return table_entry->symbol;
 }
 

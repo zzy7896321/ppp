@@ -1,8 +1,4 @@
 model flip_example() {
-    public flip
-    public x
-    private x1
-    private x2
 
     f ~ flip(0.5)
     x1 ~ gaussian(0, 1)

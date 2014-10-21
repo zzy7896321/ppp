@@ -1,39 +1,34 @@
-CC = gcc -g -ansi -std=gnu99 -DDEBUG
-AR = ar -cvq
+SHELL = /bin/sh
 
-export ${CC}
+CC = gcc
+CFLAGS = -g -std=gnu99 -DDEBUG
+ARFLAGS = cvr
 
-#all: libppp.a
-all: flip
+OBJS := 
 
-PARSE_OBJ = parse/parse.o parse/list.o parse/ilist.o parse/symbol_table.o parse/interface.o
-INFER_OBJ = infer/infer.o infer/hash_table.o infer/rejection.o infer/erp.o infer/trace.o infer/variables.o \
-			infer/execute.o infer/mh_sampler.o
+srcdir := infer query parse .
+bindir := bin
 
-libppp.a: parse_module query_module infer_module debug.o
-	$(AR) libppp.a ${PARSE_OBJ} query/query.o ${INFER_OBJ} debug.o
+LIBPPP := libppp.a
 
-.PHONY: parse_module query_module infer_module clean
+.DEFAULT_GOAL := all
 
-debug.o: debug.h debug.c
-	${CC} -c debug.c -o debug.o
+include test/makefile.mk
 
-parse_module: ${PARSE_OBJ}
-	$(MAKE) -C parse
+all: $(LIBPPP) $(TESTS) 
 
-query_module:
-	$(MAKE) -C query
+include $(srcdir:%=%/makefile.mk)
 
-infer_module: ${INFER_OBJ}
-	$(MAKE) -C infer
+$(LIBPPP): $(LIBPPP)($(OBJS))
+$(LIBPPP)($(OBJS)):
+
+$(OBJS): %.o: debug.h defs.h ppp.h
+
+$(bindir):
+	mkdir $(bindir)
 
 clean:
-	rm -rf libppp.a *.o *.exe *.dSYM
-	$(MAKE) -C parse clean
-	$(MAKE) -C query clean
-	$(MAKE) -C infer clean
-	rm -rf bin/
+	rm -rf $(bindir) $(LIBPPP) *.o
 
-flip: flip.c libppp.a
-	mkdir -p bin && ${CC} flip.c libppp.a -o bin/flip -lm
+.PHONY: all clean
 

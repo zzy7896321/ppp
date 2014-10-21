@@ -383,6 +383,8 @@ pp_query_t* pp_compile_query(const char* query_string) {
 }
 
 int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
+	if (!query) return 1;
+	
 	#define PP_QUERY_ACCEPTOR_COMPARE(compare, x, y, result)	\
 		switch (compare) {	\
 		case PP_QUERY_LT:	\

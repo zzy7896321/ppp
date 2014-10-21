@@ -157,7 +157,7 @@ float log_flip_logprob(float value, float p) {
 
 /************************************** Multinomial ******************************************/
 
-float multinomial(float theta[], int n)
+int multinomial(float theta[], int n)
 {
     int k = n;
     float thetasum = 0;
@@ -173,7 +173,7 @@ float multinomial(float theta[], int n)
     return k;
 }
 
-float multinomial_logprob(float m, float theta[], int n)
+float multinomial_logprob(int m, float theta[], int n)
 {
     int k = n;
     float thetasum = 0;

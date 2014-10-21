@@ -2,6 +2,8 @@
 
 .PHONY: test clean
 
+all: parse.o interface.o ilist.o list.o symbol_table.o
+
 parse.o: parse.h parse.c list.h ilist.h symbol_table.h
 	$(CC) -c parse.c -o parse.o
 

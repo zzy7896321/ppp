@@ -28,3 +28,10 @@ bin/
 .tags
 .tags_sorted_by_file
 trace_dump.txt
+
+.cproject
+*.swp
+.project
+.settings/
+*.stackdump
+

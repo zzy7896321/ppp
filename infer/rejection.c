@@ -35,7 +35,6 @@ int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_vari
 		StmtsNode* stmts = model->stmts;
 		while (stmts) {
 			StmtNode* stmt = stmts->stmt;
-			//ERR_OUTPUT("executing statement: %s", dump_stmt(stmt));
 
 			int status = execute_stmt(stmt, trace);
 			if (status != PP_SAMPLE_FUNCTION_NORMAL) {

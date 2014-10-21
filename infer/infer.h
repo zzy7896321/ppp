@@ -30,6 +30,7 @@ enum {
 	PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION,
 	PP_SAMPLE_FUNCTION_NUMBER_OF_PARAMETER_MISMATCH,
 	PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE,
+	PP_SAMPLE_FUNCTION_INDEX_OUT_OF_BOUND,
 
 	PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE,
 
@@ -104,8 +105,8 @@ float flipD_logprob(float value);
 float log_flip(float p);
 float log_flip_logprob(float value, float p);
 
-float multinomial(float theta[], int n);
-float multinomial_logprob(float m, float theta[], int n);
+int multinomial(float theta[], int n);
+float multinomial_logprob(int m, float theta[], int n);
 
 float uniform(float low, float high);
 float uniformDiscrete(int low, int high);
@@ -126,6 +127,6 @@ float poisson(int mu);
 float poisson_logprob(float k, int mu);
 
 float* dirichlet(float alpha[], int n);
-float dirchlet_lgoprob(float theta[], float alpha[]);
+float dirichlet_logprob(float theta[], float alpha[], int n);
 
 #endif

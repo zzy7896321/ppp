@@ -415,7 +415,7 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 				}
 			case INDEX_VAR:
 				{
-					IndexVarNode* index_var = (IndexVarNode*) expr;
+					IndexVarNode* index_var = (IndexVarNode*) variable;
 					const char* name = symbol_to_string(node_symbol_table(index_var), index_var->name);
 					pp_variable_t* var = pp_trace_find_variable(trace, name);
 					if (!var) {
@@ -438,9 +438,14 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 							pp_variable_destroy(sub);
 							pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION, "");
 						}
-						var = PP_VARIABLE_VECTOR_VALUE(var)[PP_VARIABLE_INT_VALUE(sub)];
+						int index = PP_VARIABLE_INT_VALUE(sub);
 						pp_variable_destroy(sub);
+						if (index < 0 || index >= PP_VARIABLE_VECTOR_LENGTH(var)) {
+							pp_sample_error_return(PP_SAMPLE_FUNCTION_INDEX_OUT_OF_BOUND,
+									": %s, index = %d, length = %d", name, index, PP_VARIABLE_VECTOR_LENGTH(var));
+						}
 
+						var = PP_VARIABLE_VECTOR_VALUE(var)[index];
 						expr_seq = expr_seq->expr_seq;
 					}
 
@@ -555,18 +560,20 @@ int get_variable_ptr(VariableNode* variable, pp_trace_t* trace, pp_variable_t***
 	case INDEX_VAR:
 		{
 			const char* name = symbol_to_string(node_symbol_table(variable), ((IndexVarNode*) variable)->name);
-			pp_variable_t* vec = pp_trace_find_variable(trace, name);
-			if (!vec) {
-				pp_sample_error_return(PP_SAMPLE_FUNCTION_VARIABLE_NOT_FOUND, ": %s", name);
-			}
+			pp_variable_t** vec_ptr = &pp_trace_get_variable(trace, name);
+			pp_variable_t* vec = *vec_ptr;
 
 			ExprSeqNode* expr_seq = ((IndexVarNode*) variable)->expr_seq;
 			if (!expr_seq) {
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_EXPRESSION, "");
 			}
-			while (expr_seq->expr_seq) {
-				if (!vec || vec->type != VECTOR) {
-					pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_EXPRESSION, "");
+			while (expr_seq) {
+				if (!vec) {
+					vec = new_pp_vector(16);
+					*vec_ptr = vec;
+				}
+				else if (vec->type != VECTOR) {
+					pp_sample_error_return(PP_SAMPLE_FUNCTION_SUBSCRIPTING_TO_NON_VECTOR, ": %s", name);
 				}
 
 				ExprNode* expr = expr_seq->expr;
@@ -578,31 +585,24 @@ int get_variable_ptr(VariableNode* variable, pp_trace_t* trace, pp_variable_t***
 				if (sub->type != INT) {
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION, "");
 				}
-
-				vec = PP_VARIABLE_VECTOR_VALUE(vec)[PP_VARIABLE_INT_VALUE(sub)];
+				int index = PP_VARIABLE_INT_VALUE(sub);
 				pp_variable_destroy(sub);
+				if (index < 0) {
+					pp_sample_error_return(PP_SAMPLE_FUNCTION_INDEX_OUT_OF_BOUND,
+							": %s, index %d, length %d", name, index, PP_VARIABLE_VECTOR_LENGTH(vec));
+				}
+				if (index >= PP_VARIABLE_VECTOR_LENGTH(vec)) {
+					pp_variable_vector_resize((pp_vector_t*) vec, index + 1);
+				}
+
+				vec_ptr = &(PP_VARIABLE_VECTOR_VALUE(vec)[index]);
+				vec = *vec_ptr;
 
 				expr_seq = expr_seq->expr_seq;
 			}
 
-			{
-				if (!vec || vec->type != VECTOR) {
-					pp_sample_error_return(PP_SAMPLE_FUNCTION_SUBSCRIPTING_TO_NON_VECTOR, "");
-				}
-
-				ExprNode* expr = expr_seq->expr;
-				pp_variable_t* sub = 0;
-				int status = execute_expr(expr, trace, &sub);
-				if (status != PP_SAMPLE_FUNCTION_NORMAL) {
-					pp_sample_error_return(status, "");
-				}
-				if (sub->type != INT) {
-					pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION, "");
-				}
-
-				*result_ptr = &(PP_VARIABLE_VECTOR_VALUE(vec)[PP_VARIABLE_INT_VALUE(sub)]);
-				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
-			}
+			*result_ptr = vec_ptr;
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	}
 
@@ -657,7 +657,20 @@ int execute_draw_stmt(DrawStmtNode* stmt, pp_trace_t* trace) {
 		}
 	case ERP_MULTINOMIAL:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(1);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float*, theta, float_vector);
+			int n = PP_VARIABLE_VECTOR_LENGTH(param[0]);
+			EXECUTE_DRAW_STMT_CLEAR(1);
+
+			int sample = multinomial(theta, n);
+			float logprob = multinomial_logprob(sample, theta, n);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = new_pp_int(sample);
+			trace->logprob += logprob;
+			free(theta);
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_UNIFORM:
 		{
@@ -710,7 +723,25 @@ int execute_draw_stmt(DrawStmtNode* stmt, pp_trace_t* trace) {
 		}
 	case ERP_DIRICHLET:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, alpha, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, int, n, int);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float* alphas = malloc(sizeof(float) * n);
+			for (int i = 0; i != n; ++i) {
+				alphas[i] = alpha;
+			}
+			float* sample = dirichlet(alphas, n);
+			float logprob = dirichlet_logprob(sample, alphas, n);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = pp_variable_float_array_to_vector(sample, n);
+			trace->logprob += logprob;
+			free(sample);
+			free(alphas);
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	}
 
@@ -770,7 +801,7 @@ int execute_for_stmt(ForStmtNode* stmt, pp_trace_t* trace) {
 	/* FIXME end_var could be modified during the loop, 
 	   which means it should actually be reevaluated at the end of each loop */
 	*loop_var_ptr = loop_var;
-	for (; PP_VARIABLE_INT_VALUE(*loop_var_ptr) < PP_VARIABLE_INT_VALUE(end_var); ++PP_VARIABLE_INT_VALUE(*loop_var_ptr)) {
+	for (; PP_VARIABLE_INT_VALUE(*loop_var_ptr) <= PP_VARIABLE_INT_VALUE(end_var); ++PP_VARIABLE_INT_VALUE(*loop_var_ptr)) {
 		StmtsNode* stmts = stmt->stmts;
 		while (stmts) {
 			status = execute_stmt(stmts->stmt, trace);
@@ -791,6 +822,7 @@ int execute_stmt(StmtNode* stmt, pp_trace_t* trace) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_STATEMENT, "");
 	}
 
+	ERR_OUTPUT("executing stmt:\n%s", dump_stmt(stmt));
 	switch (stmt->type) {
 	case DRAW_STMT:
 		pp_sample_return(execute_draw_stmt((DrawStmtNode*) stmt, trace));

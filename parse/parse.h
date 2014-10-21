@@ -125,7 +125,7 @@ int dump_stmts_impl(char* buffer, int buf_size, StmtsNode* stmts);
 typedef struct StmtNode /* extends CommonNode */
 {
     struct CommonNode super;
-    enum { DRAW_STMT, LET_STMT, FOR_STMT } type;
+    enum { DRAW_STMT, LET_STMT, FOR_STMT, WHILE_STMT } type;
 } StmtNode;
 
 StmtNode* parse_stmt(ParserState* ps);
@@ -166,6 +166,16 @@ typedef struct ForStmtNode /* extends StmtNode */
 ForStmtNode* parse_for_stmt(ParserState* ps);
 const char* dump_for_stmt(ForStmtNode* for_stmt);
 int dump_for_stmt_impl(char* buffer, int buf_size, ForStmtNode* for_stmt);
+
+typedef struct WhileStmtNode { /* extends StmtNode */
+    struct StmtNode super;
+    struct ExprNode* condition;
+    struct StmtsNode* stmts;
+} WhileStmtNode;
+
+WhileStmtNode* parse_while_stmt(ParserState* ps);
+const char* dump_while_stmt(WhileStmtNode* while_stmt);
+int dump_while_stmt_impl(char* buffer, int buf_size, WhileStmtNode* while_stmt);
 
 typedef struct ExprSeqNode /* extends CommonNode */
 {
@@ -222,7 +232,7 @@ typedef struct BinaryExprNode /* extends ExprNode */
 const char* dump_binary_expr(BinaryExprNode* binary_expr);
 int dump_binary_expr_impl(char* buffer, int buf_size, BinaryExprNode* binary_expr);
 
-typedef struct PrimaryNode /* extends ExprNode */
+typedef struct PrimaryExprNode /* extends ExprNode */
 {
     struct ExprNode super;
     enum {
@@ -238,37 +248,37 @@ PrimaryExprNode* parse_primary(ParserState* ps);
 const char* dump_primary(PrimaryExprNode* primary);
 int dump_primary_impl(char* buffer, int buf_size, PrimaryExprNode* primary);
 
-typedef struct NumExprNode /* extends PrimaryNode */
+typedef struct NumExprNode /* extends PrimaryExprNode */
 {
-    struct PrimaryNode super;
+    struct PrimaryExprNode super;
     struct NumericalValueNode* numerical_value;
 } NumExprNode;
 
-typedef struct VarExprNode /* extends PrimaryNode */
+typedef struct VarExprNode /* extends PrimaryExprNode */
 {
-    struct PrimaryNode super;
+    struct PrimaryExprNode super;
     struct VariableNode* variable;
 } VarExprNode;
 
-typedef struct UnaryExprNode /* extends PrimaryNode */
+typedef struct UnaryExprNode /* extends PrimaryExprNode */
 {
-    struct PrimaryNode super;
+    struct PrimaryExprNode super;
     enum { OP_NEG } op;
-    struct PrimaryNode* primary;
+    struct PrimaryExprNode* primary;
 } UnaryExprNode;
 
 const char* dump_unary_expr(UnaryExprNode* unary);
 int dump_unary_expr_impl(char* buffer, int buf_size, UnaryExprNode* unary);
 
-typedef struct GroupExprNode /* extends PrimaryNode */
+typedef struct GroupExprNode /* extends PrimaryExprNode */
 {
-    struct PrimaryNode super;
+    struct PrimaryExprNode super;
     struct ExprNode* expr;
 } GroupExprNode;
 
 typedef struct FuncExprNode /* extends PrimrayNode */
 {
-    struct PrimaryNode super;
+    struct PrimaryExprNode super;
     symbol_t name;
     struct ExprSeqNode* expr_seq;
 } FuncExprNode;

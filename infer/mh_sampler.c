@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #include "mh_sampler.h"
 #include "infer.h"
@@ -359,7 +361,7 @@ const mh_sampling_name_t mh_sampling_get_name(void* node, loop_index_stack_t* lo
 	}
 
 	size_t num_written = 0;
-	MH_SAMPLING_GET_NAME_PRINT(buffer, MH_SAMPLING_GET_NAME_BUFFER_SIZE, "%08x", (unsigned) node);
+	MH_SAMPLING_GET_NAME_PRINT(buffer, MH_SAMPLING_GET_NAME_BUFFER_SIZE, "%016"PRIxPTR, (uintptr_t) node);
 	for (size_t i = 0, end = loop_index_stack_size(loop_index); i != end; ++i) {
 		MH_SAMPLING_GET_NAME_PRINT(buffer, MH_SAMPLING_GET_NAME_BUFFER_SIZE, " %d", loop_index->data[i]);
 	}
@@ -370,7 +372,7 @@ const mh_sampling_name_t mh_sampling_get_name(void* node, loop_index_stack_t* lo
 		num_written = 0;
 		buffer_ptr = malloc(limit * sizeof(char));
 
-		MH_SAMPLING_GET_NAME_PRINT(buffer_ptr, MH_SAMPLING_GET_NAME_BUFFER_SIZE, "%08x", (unsigned) node);
+		MH_SAMPLING_GET_NAME_PRINT(buffer_ptr, MH_SAMPLING_GET_NAME_BUFFER_SIZE, "%016"PRIxPTR, (uintptr_t) node);
 		for (size_t i = 0, end = loop_index_stack_size(loop_index); i != end; ++i) {
 			MH_SAMPLING_GET_NAME_PRINT(buffer_ptr, MH_SAMPLING_GET_NAME_BUFFER_SIZE, " %d", loop_index->data[i]);
 		}

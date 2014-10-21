@@ -27,6 +27,55 @@ pp_variable_t* new_pp_vector(size_t capacity) {
 	return (pp_variable_t*) var;
 }
 
+int pp_variable_vector_resize(pp_vector_t* vector, int new_size) {
+	if (!vector) return 0;
+
+	if (new_size < 0) new_size = 0;
+
+	int length = PP_VARIABLE_VECTOR_LENGTH(vector);
+	if (new_size < length) {
+		for (int i = new_size; i != length; ++i) {
+			pp_variable_destroy(PP_VARIABLE_VECTOR_VALUE(vector)[i]);	
+			PP_VARIABLE_VECTOR_VALUE(vector)[i] = 0;
+		}
+		PP_VARIABLE_VECTOR_LENGTH(vector) = new_size; 
+	}
+
+	else if (new_size > length) {
+		if (new_size > PP_VARIABLE_VECTOR_CAPACITY(vector)) {
+			if (!pp_variable_vector_increase_capacity(vector, new_size)) {
+				return 0;
+			}
+		}
+		PP_VARIABLE_VECTOR_LENGTH(vector) = new_size;
+	}
+
+	return 1;
+}
+
+int pp_variable_vector_increase_capacity(pp_vector_t* vector, int size_to_fit) {
+	int new_capacity = PP_VARIABLE_VECTOR_CAPACITY(vector);
+	while (size_to_fit > new_capacity && new_capacity > 0) {
+		new_capacity *= 2;
+	}
+	
+	if (new_capacity < size_to_fit) {
+		return 0;
+	}
+
+	if (new_capacity > PP_VARIABLE_VECTOR_CAPACITY(vector)) {
+		pp_variable_t** new_arr = calloc(new_capacity, sizeof(pp_variable_t*));
+		if (!new_arr) {
+			return 0;
+		}
+		memcpy(new_arr, vector->value, sizeof(pp_variable_t*) * vector->length);
+		free(vector->value);
+		vector->value = new_arr;
+		vector->capacity = new_capacity;
+	}
+	return 1;
+}
+
 pp_variable_t* pp_variable_clone(pp_variable_t* variable) {
 	if (!variable) return 0;
 
@@ -196,6 +245,24 @@ int pp_variable_equal(pp_variable_t* lhs, pp_variable_t* rhs) {
 	}
 
 	return 0;
+}
+
+pp_variable_t* pp_variable_float_array_to_vector(float arr[], int n) {
+	pp_variable_t* vec = new_pp_vector((size_t) n);
+	for (int i = 0; i != n; ++i) {
+		PP_VARIABLE_VECTOR_VALUE(vec)[i] = new_pp_float(arr[i]);
+	}
+	PP_VARIABLE_VECTOR_LENGTH(vec) = n;
+	return vec;
+}
+
+pp_variable_t* pp_variable_int_array_to_vector(int arr[], int n) {
+	pp_variable_t* vec = new_pp_vector((size_t) n);
+	for (int i = 0; i != n; ++i) {
+		PP_VARIABLE_VECTOR_VALUE(vec)[i] = new_pp_int(arr[i]);
+	}
+	PP_VARIABLE_VECTOR_LENGTH(vec) = n;
+	return vec;
 }
 
 void pp_variable_destroy(pp_variable_t* variable) {
