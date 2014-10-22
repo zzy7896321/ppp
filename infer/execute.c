@@ -822,7 +822,7 @@ int execute_stmt(StmtNode* stmt, pp_trace_t* trace) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_STATEMENT, "");
 	}
 
-	ERR_OUTPUT("executing stmt:\n%s", dump_stmt(stmt));
+//	ERR_OUTPUT("executing stmt:\n%s", dump_stmt(stmt));
 	switch (stmt->type) {
 	case DRAW_STMT:
 		pp_sample_return(execute_draw_stmt((DrawStmtNode*) stmt, trace));

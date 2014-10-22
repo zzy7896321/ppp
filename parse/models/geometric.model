@@ -1,0 +1,6 @@
+model geometric(p) {
+	n = 0
+	while (1 - flip(p)) {
+		n = n + 1
+	}
+}

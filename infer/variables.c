@@ -119,10 +119,13 @@ int pp_variable_dump(pp_variable_t* variable, char* buffer, int buf_size) {
 	case VECTOR:
 		{
 			int num_written = 0;
+			num_written += snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, "[");
 			size_t length = PP_VARIABLE_VECTOR_LENGTH(variable);
 			for (size_t i = 0; i != length; ++i) {
-				num_written += pp_variable_dump(PP_VARIABLE_VECTOR_VALUE(variable)[i], buffer + num_written, buf_size - num_written);
+				num_written += pp_variable_dump(PP_VARIABLE_VECTOR_VALUE(variable)[i], buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0);;
+				num_written += snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, " ");
 			} 
+			num_written += snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, "]");
 
 			return num_written;
 		}

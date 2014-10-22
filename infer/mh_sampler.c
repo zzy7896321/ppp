@@ -13,7 +13,7 @@
 #include "execute.h"
 
 unsigned g_mh_sampler_burn_in_iterations = 0;
-unsigned g_mh_sampler_lag = 10;
+unsigned g_mh_sampler_lag = 200;
 unsigned g_mh_sampler_maximum_initial_round = 200;
 
 #define STACK_DEFAULT_VALUE 0
@@ -214,7 +214,7 @@ int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_
 	}
 
 	*loop_var_ptr = loop_var;
-	for (; PP_VARIABLE_INT_VALUE(*loop_var_ptr) < PP_VARIABLE_INT_VALUE(end_var); ++PP_VARIABLE_INT_VALUE(*loop_var_ptr)) {
+	for (; PP_VARIABLE_INT_VALUE(*loop_var_ptr) <= PP_VARIABLE_INT_VALUE(end_var); ++PP_VARIABLE_INT_VALUE(*loop_var_ptr)) {
 		loop_index_stack_push(mh_sampler->loop_index, PP_VARIABLE_INT_VALUE(*loop_var_ptr));
 		StmtsNode* stmts = stmt->stmts;
 		while (stmts) {
@@ -240,6 +240,7 @@ int mh_sampler_execute_stmt(mh_sampler_t* mh_sampler, StmtNode* stmt, pp_trace_t
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_STATEMENT, "");
 	}
 
+//	ERR_OUTPUT("executing stmt:\n%s", dump_stmt(stmt));
 	switch (stmt->type) {
 	case DRAW_STMT:
 		pp_sample_return(mh_sampler_execute_draw_stmt(mh_sampler, (DrawStmtNode*) stmt, trace));
@@ -388,7 +389,7 @@ const mh_sampling_name_t mh_sampling_get_name(void* node, loop_index_stack_t* lo
 
 void* mh_sampling_name_to_node(const char* name) {
 	void* ret = 0;
-	sscanf(name, "%x", &ret);
+	sscanf(name, "%"PRIxPTR, &ret);
 	return ret;
 }
 
@@ -456,7 +457,21 @@ int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_samplin
 		}
 	case ERP_MULTINOMIAL:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(1);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float*, theta, float_vector);
+			int n = PP_VARIABLE_VECTOR_LENGTH(param[0]);
+			EXECUTE_DRAW_STMT_CLEAR(1);
+
+			int sample = multinomial(theta, n);
+			float logprob = multinomial_logprob(sample, theta, n);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = new_pp_int(sample);
+			trace->logprob += logprob;
+			free(theta);
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, pp_variable_float_array_to_vector(theta, n));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_UNIFORM:
 		{
@@ -511,7 +526,26 @@ int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_samplin
 		}
 	case ERP_DIRICHLET:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, alpha, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, int, n, int);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float* alphas = malloc(sizeof(float) * n);
+			for (int i = 0; i != n; ++i) {
+				alphas[i] = alpha;
+			}
+			float* sample = dirichlet(alphas, n);
+			float logprob = dirichlet_logprob(sample, alphas, n);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = pp_variable_float_array_to_vector(sample, n);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(alpha), new_pp_int(n));
+			free(sample);
+			free(alphas);
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	}
 
@@ -568,7 +602,17 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 		}
 	case ERP_MULTINOMIAL:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(1);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float*, theta, float_vector);
+			int n = PP_VARIABLE_VECTOR_LENGTH(param[0]);
+			EXECUTE_DRAW_STMT_CLEAR(1);
+
+			int sample = PP_VARIABLE_INT_VALUE(*result_ptr);
+			float logprob = multinomial_logprob(sample, theta, n);
+			trace->logprob += logprob;
+			free(theta);
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, pp_variable_float_array_to_vector(theta, n));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_UNIFORM:
 		{
@@ -615,7 +659,22 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 		}
 	case ERP_DIRICHLET:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, alpha, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, int, n, int);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float* alphas = malloc(sizeof(float) * n);
+			for (int i = 0; i != n; ++i) {
+				alphas[i] = alpha;
+			}
+			float* sample = pp_variable_to_float_vector(*result_ptr);
+			float logprob = dirichlet_logprob(sample, alphas, n);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(alpha), new_pp_int(n));
+			free(sample);
+			free(alphas);
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	}
 
@@ -682,7 +741,20 @@ int mh_sampling_random_walk(DrawStmtNode* node, mh_sampling_sample_t* sample, mh
     	}
     	break;
     case ERP_MULTINOMIAL:
-    	break;
+    	{
+    		mh_sampling_sample_t* result = mh_sampling_sample_clone(sample);
+    		float* theta = pp_variable_to_float_vector(sample->param[0]);
+    		int n = PP_VARIABLE_VECTOR_LENGTH(sample->param[0]);
+
+    		int new_value = multinomial(theta, n);
+    		result->value = new_pp_int(new_value);
+    		result->logprob = multinomial_logprob(new_value, theta, n);
+    		free(theta);
+    		*F = result->logprob;
+    		*R = sample->logprob;
+    		*result_ptr = result;
+    		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+    	}
     case ERP_UNIFORM:
     	break;
     case ERP_GAUSSIAN:
@@ -716,7 +788,26 @@ int mh_sampling_random_walk(DrawStmtNode* node, mh_sampling_sample_t* sample, mh
     case ERP_POISSON:
     	break;
     case ERP_DIRICHLET:
-    	break;
+    	{
+    		mh_sampling_sample_t* result = mh_sampling_sample_clone(sample);
+    		float alpha = PP_VARIABLE_FLOAT_VALUE(sample->param[0]);
+    		int n = PP_VARIABLE_INT_VALUE(sample->param[1]);
+
+    		float* alphas = malloc(sizeof(float) * n);
+    		for (int i = 0; i != n; ++i) {
+    			alphas[i] = alpha;
+    		}
+
+    		float* new_value = dirichlet(alphas, n);
+    		result->value = pp_variable_float_array_to_vector(new_value, n);
+    		result->logprob = dirichlet_logprob(new_value, alphas, n);
+    		free(new_value);
+    		free(alphas);
+    		*F = result->logprob;
+    		*R = sample->logprob;
+    		*result_ptr = result;
+    		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+    	}
 	}
 	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, ": erp %s", erp_name(node->dist_type));
 }
