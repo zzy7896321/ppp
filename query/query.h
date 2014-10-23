@@ -3,6 +3,7 @@
 
 #include "../infer/variables.h"
 #include "../infer/trace.h"
+#include "../parse/ilist.h"
 
 typedef enum pp_query_compare_t {
 		PP_QUERY_EQ, 
@@ -15,12 +16,14 @@ extern const char* pp_query_compare_string[];
 
 typedef struct pp_query_t {
 	char* varname;
+	ilist_entry_t* index;
 	pp_query_compare_t compare;
 	pp_variable_t* threshold;
 	struct pp_query_t* next;	
 } pp_query_t;
 
-pp_query_t* new_pp_query(const char* varname, pp_query_compare_t compare, pp_variable_t* threshold, pp_query_t* next);
+pp_query_t* new_pp_query(const char* varname, ilist_entry_t* index,
+		pp_query_compare_t compare, pp_variable_t* threshold, pp_query_t* next);
 int pp_query_dump(pp_query_t* query, char* buffer, int buf_size);
 void pp_query_destroy(pp_query_t* query);
 

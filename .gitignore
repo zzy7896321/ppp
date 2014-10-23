@@ -35,3 +35,5 @@ trace_dump.txt
 .settings/
 *.stackdump
 
+doc/
+

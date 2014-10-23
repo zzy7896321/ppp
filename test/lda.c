@@ -38,7 +38,15 @@ int main()
 	PP_VARIABLE_VECTOR_VALUE(param[2])[1] = new_pp_int(2);
 	param[3] = new_pp_int(3);	
 
-    traces = pp_sample(state, "latent_dirichlet_allocation", param, 0);
+	query = pp_compile_query("X[0,0]==0 X[0,1]==0 X[1,0]==1 X[1,1]==1");
+	if (!query) return 1;
+	{
+		char buffer[8096];
+		pp_query_dump(query, buffer, 8096);
+		printf("%s\n", buffer);
+	}
+
+    traces = pp_sample(state, "latent_dirichlet_allocation", param, query);
     printf("> traces sampled\n");
 
     //query = pp_compile_query("f== 1");
@@ -51,8 +59,19 @@ int main()
         return 1;
     }
 
-	printf("last sample:\n");
 	char buffer[8096];
+
+    size_t max_index = 0;
+    for (size_t i = 1; i < traces->n; ++i) {
+    	if (traces->trace[i]->logprob > traces->trace[max_index]->logprob) {
+    		max_index = i;
+    	}
+    }
+    printf("\nsample with max logprob:\n");
+    pp_trace_dump(traces->trace[max_index], buffer, 8096);
+    printf(buffer);
+
+	printf("\nlast sample:\n");
 	pp_trace_dump(traces->trace[traces->n-1], buffer, 8096);
 	printf(buffer); 
 

@@ -129,12 +129,16 @@ int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
 		}
 
 		/* check conditions */
-		if (pp_query_acceptor((pp_trace_t*) trace, mh_sampler->query)) {
+		int acc_result = pp_query_acceptor((pp_trace_t*) trace, mh_sampler->query);
+		if ( acc_result == 1){
 			mh_sampler->current_trace = trace;
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
-		else {
+		else if (acc_result == 0) {
 			mh_sampling_trace_destroy(trace);
+		}
+		else {
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 		}
 	}
 
@@ -318,8 +322,12 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 	mh_sampling_sample_destroy(new_sample);
 
 	/* reject invaid runs */
-	if (!pp_query_acceptor((pp_trace_t*) new_trace, query)) {
+	int acc_result = pp_query_acceptor((pp_trace_t*) new_trace, query);
+	if (acc_result == 0) {
 		((pp_trace_t*) new_trace)->logprob = -INFINITY;
+	}
+	else if (acc_result == -1) {
+		pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 	}
 
 	float acceptance_rate = ((pp_trace_t*) new_trace)->logprob - ((pp_trace_t*) mh_sampler->current_trace)->logprob

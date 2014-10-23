@@ -6,6 +6,7 @@
 #include <ctype.h>
 
 #include "../infer/hash_table.h"
+#include "../debug.h"
 
 const char* pp_query_compare_string[] = {
 	"==",
@@ -16,12 +17,14 @@ const char* pp_query_compare_string[] = {
 	"<=",
 };
 
-struct pp_query_t* new_pp_query(const char* varname, pp_query_compare_t compare, pp_variable_t* threshold, pp_query_t* next) {
+struct pp_query_t* new_pp_query(const char* varname, ilist_entry_t* index,
+								pp_query_compare_t compare, pp_variable_t* threshold, pp_query_t* next) {
 	pp_query_t* query = malloc(sizeof(pp_query_t));
 	
 	int len = strlen(varname);
 	query->varname = malloc(sizeof(char) * (len + 1));
 	strcpy(query->varname, varname);
+	query->index = index;
 
 	query->compare = compare;
 	query->threshold = threshold;
@@ -37,14 +40,26 @@ int pp_query_dump(pp_query_t* query, char* buffer, int buf_size) {
 
 	buffer[0] = '\0';
 
-	int num_written = 0;
+	DUMP_START();
 	while (query) {
+		DUMP(buffer, buf_size, "%s", query->varname);
+		if (query->index) {
+			ilist_entry_t* ind_entry = query->index;
+			DUMP(buffer, buf_size, "[%d", ind_entry->data);
+			while ((ind_entry = ind_entry->next)) {
+				DUMP(buffer, buf_size, ", %d", ind_entry->data);
+			}
+			DUMP(buffer, buf_size, "]");
+		}
+
+		DUMP(buffer, buf_size, " %s", pp_query_compare_string[query->compare]);
+
 		switch (query->threshold->type) {
 		case INT:
-			num_written += snprintf(buffer + num_written, buf_size - num_written, "%s %s %d\n", query->varname, pp_query_compare_string[query->compare], PP_VARIABLE_INT_VALUE(query->threshold));
+			DUMP(buffer, buf_size, " %d\n", PP_VARIABLE_INT_VALUE(query->threshold));
 			break;
 		case FLOAT:
-			num_written += snprintf(buffer + num_written, buf_size - num_written, "%s %s %f\n", query->varname, pp_query_compare_string[query->compare], PP_VARIABLE_FLOAT_VALUE(query->threshold));
+			DUMP(buffer, buf_size, " %f\n", PP_VARIABLE_FLOAT_VALUE(query->threshold));
 			break;
 		case VECTOR:
 			break;
@@ -52,7 +67,7 @@ int pp_query_dump(pp_query_t* query, char* buffer, int buf_size) {
 		query = query->next; 
 	}
 
-	return num_written;
+	DUMP_SUCCESS();
 }
 
 void pp_query_destroy(pp_query_t* query) {
@@ -60,6 +75,12 @@ void pp_query_destroy(pp_query_t* query) {
 		pp_query_t* to_free = query;
 		query = query->next;
 		pp_variable_destroy(to_free->threshold);
+		free(to_free->varname);
+		while (to_free->index) {
+			ilist_entry_t* prev_entry = to_free->index;
+			to_free->index = to_free->index->next;
+			free(prev_entry);
+		}
 		free(to_free);
 	}
 }
@@ -79,6 +100,9 @@ typedef enum token_t {
 	TOKEN_GE,
 	TOKEN_EQ,
 	TOKEN_NE,
+	TOKEN_LSQRBRACKET,
+	TOKEN_RSQRBRACKET,
+	TOKEN_COMMA,
 	TOKEN_ERROR,
 } token_t;
 
@@ -93,6 +117,9 @@ const char* token_string[] = {
 	"TOKEN_GE",
 	"TOKEN_EQ",
 	"TOKEN_NE",
+	"TOKEN_LSQRBRACKET",
+	"TOKEN_RSQRBRACKET",
+	"TOKEN_COMMA",
 	"TOKEN_ERROR",
 };
 
@@ -133,6 +160,24 @@ int query_lex_next_token(query_lex_t* lex, char* buffer, unsigned n) {
 	if (ch == EOF) {
 		buffer[0] = '\0';
 		return TOKEN_EOF;
+	}
+
+	else if (ch == '[') {
+		buffer[0] = '[';
+		buffer[1] = '\0';
+		return TOKEN_LSQRBRACKET;
+	}
+
+	else if (ch == ']') {
+		buffer[0] = ']';
+		buffer[1] = '\0';
+		return TOKEN_RSQRBRACKET;
+	}
+
+	else if (ch == ',') {
+		buffer[0] = ',';
+		buffer[1] = '\0';
+		return TOKEN_COMMA;
 	}
 
 	else if (isalpha(ch) | (ch == '_')) {
@@ -246,6 +291,7 @@ int query_lex_next_token(query_lex_t* lex, char* buffer, unsigned n) {
 
 		if (ch != '.') {
 			buffer[i++] = '\0';
+			query_lex_ungetc(lex, ch);
 			return TOKEN_INT;
 		}
 
@@ -286,6 +332,8 @@ void query_lex_destroy(query_lex_t* lex) {
 typedef enum pp_compile_query_state_t {
 	INITIAL = 0,
 	ID,
+	ID_BEFOREIND,
+	ID_IND,
 	ID_CP,
 	//ID_CP_VAL,
 } pp_compile_query_state_t;
@@ -293,6 +341,8 @@ typedef enum pp_compile_query_state_t {
 static const char* pp_compile_query_state_string[] = {
 	"INITIAL",
 	"ID",
+	"ID_BEFOREIND",
+	"ID_IND"
 	"ID_CP",
 };
 
@@ -304,15 +354,18 @@ pp_query_t* pp_compile_query(const char* query_string) {
 	int token;
 	int state = INITIAL;
 
+	ilist_entry_t* head = 0;
+	ilist_entry_t** tail_ptr = &head;
+
 	#define RETURN_ERROR(err_string)	\
 		pp_query_destroy(query);	\
-		printf("pp_compile_query: %s: %s\n", err_string, buffer);	\
+		fprintf(stderr, "pp_compile_query: %s: %s(%s)\n", err_string, buffer, token_string[token]);	\
 		fprintf(stderr, "pp_compile_query: current state is %s\n", pp_compile_query_state_string[state]);	\
 		query_lex_destroy(lex);	\
 		return 0
 
 	while ((token = query_lex_next_token(lex, buffer, PP_COMPILE_QUERY_BUFFER_SIZE + 1)) != TOKEN_EOF) {
-		//printf("token = %s\n", token_string[token]);
+//		fprintf(stderr, "token = %s, value = \"%s\"\n", token_string[token], buffer);
 		if (token == TOKEN_ERROR) {
 			RETURN_ERROR("error in token");
 		}
@@ -322,34 +375,68 @@ pp_query_t* pp_compile_query(const char* query_string) {
 				RETURN_ERROR("expecting identifier, but got");
 			}
 
-			query = new_pp_query(buffer, PP_QUERY_EQ, 0, query);
+			query = new_pp_query(buffer, 0, PP_QUERY_EQ, 0, query);
 			state = ID;
 			break;
 		case ID:
 			switch (token) {
+			case TOKEN_LSQRBRACKET:
+				state = ID_BEFOREIND;
+				break;
 			case TOKEN_LT:
 				query->compare = PP_QUERY_LT;
+				state = ID_CP;
 				break;
 			case TOKEN_LE:
 				query->compare = PP_QUERY_LE;
+				state = ID_CP;
 				break;
 			case TOKEN_GT:
 				query->compare = PP_QUERY_GT;
+				state = ID_CP;
 				break;
 			case TOKEN_GE:
 				query->compare = PP_QUERY_GE;
+				state = ID_CP;
 				break;
 			case TOKEN_EQ:
 				query->compare = PP_QUERY_EQ;
+				state = ID_CP;
 				break;
 			case TOKEN_NE:
 				query->compare = PP_QUERY_NE;
+				state = ID_CP;
 				break;
 			default:
-				RETURN_ERROR("expecting relation operator, but got");
+				RETURN_ERROR("expecting REL or '[', but got");
 			}
-			state = ID_CP;
 
+			break;
+		case ID_BEFOREIND:
+			if (token != TOKEN_INT) {
+				RETURN_ERROR("expecting index, but got");
+			}
+			{
+				int value = atoi(buffer);
+				ilist_entry_t* entry = malloc(sizeof(ilist_entry_t));
+				entry->data = value;
+				entry->next = 0;
+				*tail_ptr = entry;
+				tail_ptr = &(entry->next);
+				state = ID_IND;
+			}
+			break;
+		case ID_IND:
+			switch (token) {
+			case TOKEN_RSQRBRACKET:
+				state = ID;
+				break;
+			case TOKEN_COMMA:
+				state = ID_BEFOREIND;
+				break;
+			default:
+				RETURN_ERROR("expecting ',' or ']', but got");
+			}
 			break;
 		case ID_CP:
 			switch (token) {
@@ -366,7 +453,13 @@ pp_query_t* pp_compile_query(const char* query_string) {
 				}
 				break;
 			default:
-				RETURN_ERROR("expecting a number, but got");
+				RETURN_ERROR("expecting number, but got");
+			}
+
+			if (head) {
+				query->index = head;
+				head = 0;
+				tail_ptr = &head;
 			}
 			state = INITIAL;
 			break;
@@ -374,7 +467,7 @@ pp_query_t* pp_compile_query(const char* query_string) {
 	}
 
 	if (state != INITIAL) {
-		RETURN_ERROR("end up in non-accepting state");
+		RETURN_ERROR("unexpected EOF");
 	}
 	#undef RETURN_ERROR
 
@@ -409,8 +502,19 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 
 	while (query) {
 		pp_variable_t* var = pp_trace_find_variable(trace, query->varname);
+		ilist_entry_t* ind_entry = query->index;
+		while (ind_entry) {
+			if (!var || var->type != VECTOR) {
+				printf("Query: subscripting to non-vector type\n");
+				return -1;
+			}
+
+			var = PP_VARIABLE_VECTOR_VALUE(var)[ind_entry->data];
+			ind_entry = ind_entry->next;
+		}
 		if (!var) {
-			return 0;
+			printf("Query: cannot find %s\n", query->varname);
+			return -1;
 		}
 
 		switch (var->type) {
@@ -463,8 +567,9 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 			}
 			break;
 		case VECTOR:
+			printf("Query: vector comparison not implemented\n");
 			/* unhandled */
-			return 0;
+			return -1;
 		}
 		query = query->next;
 	}

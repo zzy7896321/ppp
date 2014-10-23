@@ -1,5 +1,6 @@
 #include "../ppp.h"
 #include "../defs.h"
+#include "../debug.h"
 #include "parse.h"
 #include "list.h"
 #include "ilist.h"
@@ -18,9 +19,6 @@
 
 #define DUMP_BUFFER_SIZE 8096
 static char dump_buffer[DUMP_BUFFER_SIZE];
-
-#define DUMP_CALL(function, ...)  \
-    num_written += function(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, __VA_ARGS__)
 
 symbol_table_t* node_symbol_table(void* any)
 {
@@ -163,9 +161,9 @@ const char* dump_models(struct ModelsNode* models) {
 int dump_models_impl(char* buffer, int buf_size, struct ModelsNode* models)
 {
     int num_written = 0;
-    DUMP_CALL(dump_model_impl, models->model);
+    DUMP_CALL(dump_model_impl, buffer, buf_size, models->model);
     if (models->models)
-        DUMP_CALL(dump_models_impl, models->models);
+        DUMP_CALL(dump_models_impl, buffer, buf_size, models->models);
     return num_written;
 }
 
@@ -194,17 +192,17 @@ const char* dump_model(struct ModelNode* model) {
 int dump_model_impl(char* buffer, int buf_size, struct ModelNode* model)
 {
     int num_written = 0;
-    DUMP_CALL(snprintf, "model ");
+    DUMP_CALL(snprintf, buffer, buf_size, "model ");
     
-    DUMP_CALL(dump_name_impl, model->name, node_symbol_table(model));
-    DUMP_CALL(snprintf, "(");
+    DUMP_CALL(dump_name_impl, buffer, buf_size, model->name, node_symbol_table(model));
+    DUMP_CALL(snprintf, buffer, buf_size, "(");
     if (model->params) {
-      DUMP_CALL(dump_model_params_impl, model->params);
+      DUMP_CALL(dump_model_params_impl, buffer, buf_size, model->params);
     }
-    DUMP_CALL(snprintf, ") {\n");
-    //DUMP_CALL(dump_decls_impl, model->decls);
-    DUMP_CALL(dump_stmts_impl, model->stmts);
-    DUMP_CALL(snprintf, "}\n");
+    DUMP_CALL(snprintf, buffer, buf_size, ") {\n");
+    //DUMP_CALL(dump_decls_impl, buffer, buf_size, model->decls);
+    DUMP_CALL(dump_stmts_impl, buffer, buf_size, model->stmts);
+    DUMP_CALL(snprintf, buffer, buf_size, "}\n");
     return num_written;
 }
 
@@ -258,10 +256,10 @@ const char* dump_model_params(struct ModelParamsNode* model_params) {
 int dump_model_params_impl(char* buffer, int buf_size, struct ModelParamsNode* model_params)
 {
     int num_written = 0;
-    DUMP_CALL(dump_name_impl, model_params->name, node_symbol_table(model_params));
+    DUMP_CALL(dump_name_impl, buffer, buf_size, model_params->name, node_symbol_table(model_params));
     if (model_params->model_params) {
-        DUMP_CALL(snprintf, ", ");
-        DUMP_CALL(dump_model_params_impl, model_params->model_params);
+        DUMP_CALL(snprintf, buffer, buf_size, ", ");
+        DUMP_CALL(dump_model_params_impl, buffer, buf_size, model_params->model_params);
     }
   return num_written;
 }
@@ -297,9 +295,9 @@ const char* dump_decls(struct DeclsNode* decls) {
 int dump_decls_impl(char* buffer, int buf_size, struct DeclsNode* decls)
 {
     int num_written = 0;
-    DUMP_CALL(dump_decl_impl, decls->decl);
+    DUMP_CALL(dump_decl_impl, buffer, buf_size, decls->decl);
     if (decls->decls)
-        DUMP_CALL(dump_decls_impl, decls->decls);
+        DUMP_CALL(dump_decls_impl, buffer, buf_size, decls->decls);
     return num_written;
 }
 
@@ -329,9 +327,9 @@ const char* dump_stmts(struct StmtsNode* stmts) {
 int dump_stmts_impl(char* buffer, int buf_size, struct StmtsNode* stmts)
 {
     int num_written = 0;
-    DUMP_CALL(dump_stmt_impl, stmts->stmt);
+    DUMP_CALL(dump_stmt_impl, buffer, buf_size, stmts->stmt);
     if (stmts->stmts)
-        DUMP_CALL(dump_stmts_impl, stmts->stmts);
+        DUMP_CALL(dump_stmts_impl, buffer, buf_size, stmts->stmts);
     return num_written;
 }
 
@@ -393,9 +391,9 @@ const char* dump_public_decl(struct PublicDeclNode* public_decl) {
 int dump_public_decl_impl(char* buffer, int buf_size, struct PublicDeclNode* public_decl)
 {
     int num_written = 0;
-    DUMP_CALL(snprintf, "public ");
-    DUMP_CALL(dump_variable_impl, public_decl->variable);
-    DUMP_CALL(snprintf, "\n");
+    DUMP_CALL(snprintf, buffer, buf_size, "public ");
+    DUMP_CALL(dump_variable_impl, buffer, buf_size, public_decl->variable);
+    DUMP_CALL(snprintf, buffer, buf_size, "\n");
     return num_written;
 }
 
@@ -425,9 +423,9 @@ const char* dump_private_decl(struct PrivateDeclNode* private_decl) {
 int dump_private_decl_impl(char* buffer, int buf_size, struct PrivateDeclNode* private_decl)
 {
     int num_written = 0;
-    DUMP_CALL(snprintf, "private ");
-    DUMP_CALL(dump_variable_impl, private_decl->variable);
-    DUMP_CALL(snprintf, "\n");
+    DUMP_CALL(snprintf, buffer, buf_size, "private ");
+    DUMP_CALL(dump_variable_impl, buffer, buf_size, private_decl->variable);
+    DUMP_CALL(snprintf, buffer, buf_size, "\n");
     return num_written;
 }
 
@@ -476,13 +474,13 @@ const char* dump_draw_stmt(struct DrawStmtNode* draw_stmt) {
 int dump_draw_stmt_impl(char* buffer, int buf_size, struct DrawStmtNode* draw_stmt)
 {
     int num_written = 0;
-    DUMP_CALL(dump_variable_impl, draw_stmt->variable);
-    DUMP_CALL(snprintf, " ~ ");
+    DUMP_CALL(dump_variable_impl, buffer, buf_size, draw_stmt->variable);
+    DUMP_CALL(snprintf, buffer, buf_size, " ~ ");
     //dump_name(draw_stmt->dist, node_symbol_table(draw_stmt));
-    DUMP_CALL(snprintf, "%s", erp_name(draw_stmt->dist_type)); 
-    DUMP_CALL(snprintf, "(");
-    DUMP_CALL(dump_expr_seq_impl, draw_stmt->expr_seq);
-    DUMP_CALL(snprintf, ")\n");
+    DUMP_CALL(snprintf, buffer, buf_size, "%s", erp_name(draw_stmt->dist_type));
+    DUMP_CALL(snprintf, buffer, buf_size, "(");
+    DUMP_CALL(dump_expr_seq_impl, buffer, buf_size, draw_stmt->expr_seq);
+    DUMP_CALL(snprintf, buffer, buf_size, ")\n");
     return num_written;
 }
 
@@ -495,10 +493,10 @@ const char* dump_let_stmt(struct LetStmtNode* let_stmt) {
 int dump_let_stmt_impl(char* buffer, int buf_size, struct LetStmtNode* let_stmt)
 {
     int num_written = 0;
-    DUMP_CALL(dump_variable_impl, let_stmt->variable);
-    DUMP_CALL(snprintf, " = ");
-    DUMP_CALL(dump_expr_impl, let_stmt->expr);
-    DUMP_CALL(snprintf, "\n");
+    DUMP_CALL(dump_variable_impl, buffer, buf_size, let_stmt->variable);
+    DUMP_CALL(snprintf, buffer, buf_size, " = ");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, let_stmt->expr);
+    DUMP_CALL(snprintf, buffer, buf_size, "\n");
     return num_written;
 }
 
@@ -573,15 +571,15 @@ const char* dump_for_stmt(struct ForStmtNode* for_stmt) {
 int dump_for_stmt_impl(char* buffer, int buf_size, struct ForStmtNode* for_stmt)
 {
     int num_written = 0;
-    DUMP_CALL(snprintf, "for ");
-    DUMP_CALL(dump_name_impl, for_stmt->name, node_symbol_table(for_stmt));
-    DUMP_CALL(snprintf, " = ");
-    DUMP_CALL(dump_expr_impl, for_stmt->start_expr);
-    DUMP_CALL(snprintf, " to ");
-    DUMP_CALL(dump_expr_impl, for_stmt->end_expr);
-    DUMP_CALL(snprintf, " {\n");
-    DUMP_CALL(dump_stmts_impl, for_stmt->stmts);
-    DUMP_CALL(snprintf, "}\n");
+    DUMP_CALL(snprintf, buffer, buf_size, "for ");
+    DUMP_CALL(dump_name_impl, buffer, buf_size, for_stmt->name, node_symbol_table(for_stmt));
+    DUMP_CALL(snprintf, buffer, buf_size, " = ");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, for_stmt->start_expr);
+    DUMP_CALL(snprintf, buffer, buf_size, " to ");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, for_stmt->end_expr);
+    DUMP_CALL(snprintf, buffer, buf_size, " {\n");
+    DUMP_CALL(dump_stmts_impl, buffer, buf_size, for_stmt->stmts);
+    DUMP_CALL(snprintf, buffer, buf_size, "}\n");
     return num_written;
 }
 
@@ -674,11 +672,11 @@ const char* dump_while_stmt(WhileStmtNode* while_stmt) {
 
 int dump_while_stmt_impl(char* buffer, int buf_size, WhileStmtNode* while_stmt) {
     int num_written = 0;
-    DUMP_CALL(snprintf, "while (");
-    DUMP_CALL(dump_expr_impl, while_stmt->condition);
-    DUMP_CALL(snprintf, ") {\n");
-    DUMP_CALL(dump_stmts_impl, while_stmt->stmts);
-    DUMP_CALL(snprintf, "}\n");
+    DUMP_CALL(snprintf, buffer, buf_size, "while (");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, while_stmt->condition);
+    DUMP_CALL(snprintf, buffer, buf_size, ") {\n");
+    DUMP_CALL(dump_stmts_impl, buffer, buf_size, while_stmt->stmts);
+    DUMP_CALL(snprintf, buffer, buf_size, "}\n");
     return num_written; 
 }
 
@@ -698,10 +696,10 @@ const char* dump_expr_seq(struct ExprSeqNode* expr_seq) {
 int dump_expr_seq_impl(char* buffer, int buf_size, struct ExprSeqNode* expr_seq)
 {
     int num_written = 0;
-    DUMP_CALL(dump_expr_impl, expr_seq->expr);
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, expr_seq->expr);
     if (expr_seq->expr_seq) {
-        DUMP_CALL(snprintf, ", ");
-        DUMP_CALL(dump_expr_seq_impl, expr_seq->expr_seq);
+        DUMP_CALL(snprintf, buffer, buf_size, ", ");
+        DUMP_CALL(dump_expr_seq_impl, buffer, buf_size, expr_seq->expr_seq);
     }
     return num_written;
 }
@@ -761,12 +759,12 @@ const char* dump_if_expr(struct IfExprNode* if_expr) {
 int dump_if_expr_impl(char* buffer, int buf_size, struct IfExprNode* if_expr)
 {
     int num_written = 0;
-    DUMP_CALL(snprintf, "if ");
-    DUMP_CALL(dump_expr_impl, if_expr->condition);
-    DUMP_CALL(snprintf, " then ");
-    DUMP_CALL(dump_expr_impl, if_expr->consequent);
-    DUMP_CALL(snprintf, " else ");
-    DUMP_CALL(dump_expr_impl, if_expr->alternative);
+    DUMP_CALL(snprintf, buffer, buf_size, "if ");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, if_expr->condition);
+    DUMP_CALL(snprintf, buffer, buf_size, " then ");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, if_expr->consequent);
+    DUMP_CALL(snprintf, buffer, buf_size, " else ");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, if_expr->alternative);
     return num_written;
 }
 
@@ -779,9 +777,9 @@ const char* dump_new_expr(struct NewExprNode* new_expr) {
 int dump_new_expr_impl(char* buffer, int buf_size, struct NewExprNode* new_expr)
 {
     int num_written = 0;
-    DUMP_CALL(snprintf, "new ");
-    DUMP_CALL(dump_name_impl, new_expr->name, node_symbol_table(new_expr));
-    DUMP_CALL(snprintf, "()");
+    DUMP_CALL(snprintf, buffer, buf_size, "new ");
+    DUMP_CALL(dump_name_impl, buffer, buf_size, new_expr->name, node_symbol_table(new_expr));
+    DUMP_CALL(snprintf, buffer, buf_size, "()");
     return num_written;
 }
 
@@ -838,18 +836,18 @@ const char* dump_binary_expr(struct BinaryExprNode* expr) {
 int dump_binary_expr_impl(char* buffer, int buf_size, struct BinaryExprNode* expr)
 {
     int num_written = 0;
-    DUMP_CALL(dump_expr_impl, expr->left);
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, expr->left);
     if (expr->op == OP_ADD)
-        DUMP_CALL(snprintf, " + ");
+        DUMP_CALL(snprintf, buffer, buf_size, " + ");
     else if (expr->op == OP_SUB)
-        DUMP_CALL(snprintf, " - ");
+        DUMP_CALL(snprintf, buffer, buf_size, " - ");
     else if (expr->op == OP_MUL)
-        DUMP_CALL(snprintf, " * ");
+        DUMP_CALL(snprintf, buffer, buf_size, " * ");
     else if (expr->op == OP_DIV)
-        DUMP_CALL(snprintf, " / ");
+        DUMP_CALL(snprintf, buffer, buf_size, " / ");
     else
-        DUMP_CALL(snprintf, " ? ");
-    DUMP_CALL(dump_expr_impl, expr->right);
+        DUMP_CALL(snprintf, buffer, buf_size, " ? ");
+    DUMP_CALL(dump_expr_impl, buffer, buf_size, expr->right);
     return num_written;
 }
 
@@ -938,8 +936,8 @@ int dump_unary_expr_impl(char* buffer, int buf_size, struct UnaryExprNode* unary
 {
     int num_written = 0;
     if (unary->op == OP_NEG)
-        DUMP_CALL(snprintf, "-");
-    DUMP_CALL(dump_primary_impl, unary->primary);
+        DUMP_CALL(snprintf, buffer, buf_size, "-");
+    DUMP_CALL(dump_primary_impl, buffer, buf_size, unary->primary);
     return num_written;
 }
 
@@ -961,18 +959,18 @@ int dump_primary_impl(char* buffer, int buf_size, struct PrimaryExprNode* primar
 
     if (primary->type == GROUP_EXPR) {
         int num_written = 0;
-        DUMP_CALL(snprintf, "(");
-        DUMP_CALL(dump_expr_impl, ((struct GroupExprNode*)primary)->expr);
-        DUMP_CALL(snprintf, ")");
+        DUMP_CALL(snprintf, buffer, buf_size, "(");
+        DUMP_CALL(dump_expr_impl, buffer, buf_size, ((struct GroupExprNode*)primary)->expr);
+        DUMP_CALL(snprintf, buffer, buf_size, ")");
         return num_written;
     }
 
     if (primary->type == FUNC_EXPR) {
         int num_written = 0;
-        DUMP_CALL(dump_name_impl, ((struct FuncExprNode*)primary)->name, node_symbol_table(primary));
-        DUMP_CALL(snprintf, "(");
-        DUMP_CALL(dump_expr_seq_impl, ((struct FuncExprNode*)primary)->expr_seq);
-        DUMP_CALL(snprintf, ")");
+        DUMP_CALL(dump_name_impl, buffer, buf_size, ((struct FuncExprNode*)primary)->name, node_symbol_table(primary));
+        DUMP_CALL(snprintf, buffer, buf_size, "(");
+        DUMP_CALL(dump_expr_seq_impl, buffer, buf_size, ((struct FuncExprNode*)primary)->expr_seq);
+        DUMP_CALL(snprintf, buffer, buf_size, ")");
         return num_written;
     }
 
@@ -1095,9 +1093,9 @@ const char* dump_field_var(struct FieldVarNode* field_var) {
 int dump_field_var_impl(char* buffer, int buf_size, struct FieldVarNode* field_var)
 {
     int num_written = 0;
-    DUMP_CALL(dump_name_impl, field_var->name, node_symbol_table(field_var));
-    DUMP_CALL(snprintf, ".");
-    DUMP_CALL(dump_name_impl, field_var->field_name, node_symbol_table(field_var));
+    DUMP_CALL(dump_name_impl, buffer, buf_size, field_var->name, node_symbol_table(field_var));
+    DUMP_CALL(snprintf, buffer, buf_size, ".");
+    DUMP_CALL(dump_name_impl, buffer, buf_size, field_var->field_name, node_symbol_table(field_var));
     return num_written;
 }
 
@@ -1110,10 +1108,10 @@ const char* dump_index_var(struct IndexVarNode* index_var) {
 int dump_index_var_impl(char* buffer, int buf_size, struct IndexVarNode* index_var)
 {
     int num_written = 0;
-    DUMP_CALL(dump_name_impl, index_var->name, node_symbol_table(index_var));
-    DUMP_CALL(snprintf, "[");
-    DUMP_CALL(dump_expr_seq_impl, index_var->expr_seq);
-    DUMP_CALL(snprintf, "]");
+    DUMP_CALL(dump_name_impl, buffer, buf_size, index_var->name, node_symbol_table(index_var));
+    DUMP_CALL(snprintf, buffer, buf_size, "[");
+    DUMP_CALL(dump_expr_seq_impl, buffer, buf_size, index_var->expr_seq);
+    DUMP_CALL(snprintf, buffer, buf_size, "]");
     return num_written;
 }
 
@@ -2096,5 +2094,3 @@ Module interfaces
 //     instance->vertex_names = new_list();
 //     instantiate_model(model, model_params, &variable_vertex_map, instance);
 // }
-
-#undef DUMP_CALL

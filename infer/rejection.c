@@ -22,10 +22,11 @@ int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_vari
 		trace = new_pp_trace();
 
 		/* set up parameters */
+		pp_variable_t** realparam = param;
 		ModelParamsNode* param_node = model->params;
 		while (param_node) {
 			const char* varname = symbol_to_string(node_symbol_table(param_node), param_node->name);
-			pp_trace_set_variable(trace, varname, *(param++));	
+			pp_trace_set_variable(trace, varname, *(realparam++));
 			param_node = param_node->model_params;
 		}
 
@@ -45,11 +46,15 @@ int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_vari
 		}
 
 		/* check condition */
-		if (pp_query_acceptor(trace, query)) {
+		int acc_result = pp_query_acceptor(trace, query);
+		if (acc_result == 1) {
 			break;
 		}
-		else {
+		else if (acc_result == 0){
 			pp_trace_destroy(trace);
+		}
+		else {
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 		}
 	}
 
