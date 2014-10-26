@@ -2,9 +2,6 @@
 #include "../defs.h"
 #include "../debug.h"
 #include "parse.h"
-#include "list.h"
-#include "ilist.h"
-#include "symbol_table.h"
 #include "interface.h"
 #include <assert.h>
 #include <ctype.h>

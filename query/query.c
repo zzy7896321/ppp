@@ -5,7 +5,6 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "../infer/hash_table.h"
 #include "../debug.h"
 
 const char* pp_query_compare_string[] = {
@@ -55,13 +54,13 @@ int pp_query_dump(pp_query_t* query, char* buffer, int buf_size) {
 		DUMP(buffer, buf_size, " %s", pp_query_compare_string[query->compare]);
 
 		switch (query->threshold->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			DUMP(buffer, buf_size, " %d\n", PP_VARIABLE_INT_VALUE(query->threshold));
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			DUMP(buffer, buf_size, " %f\n", PP_VARIABLE_FLOAT_VALUE(query->threshold));
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			break;
 		}
 		query = query->next; 
@@ -504,7 +503,7 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 		pp_variable_t* var = pp_trace_find_variable(trace, query->varname);
 		ilist_entry_t* ind_entry = query->index;
 		while (ind_entry) {
-			if (!var || var->type != VECTOR) {
+			if (!var || var->type != PP_VARIABLE_VECTOR) {
 				printf("Query: subscripting to non-vector type\n");
 				return -1;
 			}
@@ -518,9 +517,9 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 		}
 
 		switch (var->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			switch (query->threshold->type) {
-			case INT:
+			case PP_VARIABLE_INT:
 				{
 					int result;
 					PP_QUERY_ACCEPTOR_COMPARE(query->compare, PP_VARIABLE_INT_VALUE(var), PP_VARIABLE_INT_VALUE(query->threshold), result)
@@ -529,7 +528,7 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 					}
 				}
 				break;
-			case FLOAT:
+			case PP_VARIABLE_FLOAT:
 				{
 					int result;
 					PP_QUERY_ACCEPTOR_COMPARE(query->compare, PP_VARIABLE_INT_VALUE(var), PP_VARIABLE_FLOAT_VALUE(query->threshold), result)
@@ -538,13 +537,13 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 					}
 				}
 				break;
-			case VECTOR:
+			case PP_VARIABLE_VECTOR:
 				return 0;
 			}
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			switch (query->threshold->type) {
-			case INT:
+			case PP_VARIABLE_INT:
 				{
 					int result;
 					PP_QUERY_ACCEPTOR_COMPARE(query->compare, PP_VARIABLE_FLOAT_VALUE(var), PP_VARIABLE_INT_VALUE(query->threshold), result)
@@ -553,7 +552,7 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 					}
 				}
 				break;
-			case FLOAT:
+			case PP_VARIABLE_FLOAT:
 				{
 					int result;
 					PP_QUERY_ACCEPTOR_COMPARE(query->compare, PP_VARIABLE_FLOAT_VALUE(var), PP_VARIABLE_FLOAT_VALUE(query->threshold), result)
@@ -562,11 +561,11 @@ int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query) {
 					}
 				}
 				break;
-			case VECTOR:
+			case PP_VARIABLE_VECTOR:
 				return 0;
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			printf("Query: vector comparison not implemented\n");
 			/* unhandled */
 			return -1;

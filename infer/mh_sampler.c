@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <assert.h>
 
 #include "mh_sampler.h"
 #include "infer.h"
@@ -203,7 +204,7 @@ int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_
 	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 		pp_sample_error_return(status, "");
 	}
-	if (loop_var->type != INT) {
+	if (loop_var->type != PP_VARIABLE_INT) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
 
@@ -213,7 +214,7 @@ int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_
 		pp_variable_destroy(loop_var);
 		pp_sample_error_return(status, "");
 	}
-	if (end_var->type != INT) {
+	if (end_var->type != PP_VARIABLE_INT) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
 

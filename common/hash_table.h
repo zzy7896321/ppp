@@ -4,7 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#include <assert.h>
+#include <stddef.h>
+
 
 #define DECLARE_HASH_TABLE(prefix, key_type, value_type)	\
 	typedef struct prefix##_hash_table_t prefix##_hash_table_t;	\
@@ -33,7 +34,7 @@
 	size_t prefix##_hash_table_capacity(prefix##_hash_table_t* hash_table);	\
 	void prefix##_hash_table_clear(prefix##_hash_table_t* hash_table);	\
 	int prefix##_hash_table_dump(prefix##_hash_table_t* hash_table, char* buffer, int buf_size);	\
-	prefix##_hash_table_t* prefix##_hash_table_clone(prefix##_hash_table_t* hash_table);
+	prefix##_hash_table_t* prefix##_hash_table_clone(prefix##_hash_table_t* hash_table)
 
 #define DEFINE_HASH_TABLE(prefix, key_type, value_type)	\
 	prefix##_hash_table_t* new_##prefix##_hash_table(size_t capacity) { \

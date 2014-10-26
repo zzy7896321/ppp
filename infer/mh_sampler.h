@@ -2,9 +2,9 @@
 #define MH_SAMPLER_H
 
 #include "infer.h"
-#include "trace.h"
-#include "variables.h"
-#include "stack.h"
+#include "../common/trace.h"
+#include "../common/variables.h"
+#include "../common/stack.h"
 
 extern unsigned g_mh_sampler_burn_in_iterations;
 extern unsigned g_mh_sampler_lag;
@@ -47,11 +47,6 @@ struct mh_sampler_t {
 	mh_sampling_trace_t* current_trace;
 	float ll_stale;
 	float ll_fresh;
-
-/*	const mh_sampling_name_t new_var_stmt_name;
-	DrawStmtNode* new_var_node;
-	pp_variable_t* new_var;
-	float new_var_prob; */
 };
 
 mh_sampler_t* new_mh_sampler(pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query);
@@ -71,7 +66,7 @@ void* mh_sampling_name_to_node(const char* name);
 #define mh_sampling_destroy_name(name) free(name)
 
 
-DECLARE_HASH_TABLE(mh_sampling_erp, char*, mh_sampling_sample_t*)
+DECLARE_HASH_TABLE(mh_sampling_erp, char*, mh_sampling_sample_t*);
 
 struct mh_sampling_trace_t {
 	pp_trace_t super;

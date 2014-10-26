@@ -3,10 +3,10 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "query/query.h"
-#include "parse/parse.h"
-#include "parse/interface.h"
-#include "infer/variables.h"
+#include "../query/query.h"
+#include "../parse/parse.h"
+#include "../parse/interface.h"
+#include "../common/variables.h"
 
 int main()
 {

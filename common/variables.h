@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 typedef struct pp_variable_t {
-	enum {INT, FLOAT, VECTOR} type;
+	enum {PP_VARIABLE_INT, PP_VARIABLE_FLOAT, PP_VARIABLE_VECTOR} type;
 	float logprob;
 } pp_variable_t;
 

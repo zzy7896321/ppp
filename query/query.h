@@ -1,9 +1,9 @@
 #ifndef QUERY_H
 #define QUERY_H
 
-#include "../infer/variables.h"
-#include "../infer/trace.h"
-#include "../parse/ilist.h"
+#include "../common/variables.h"
+#include "../common/trace.h"
+#include "../common/ilist.h"
 
 typedef enum pp_query_compare_t {
 		PP_QUERY_EQ, 

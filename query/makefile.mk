@@ -2,8 +2,8 @@
 OBJECTS := query.o
 OBJS += $(OBJECTS)
 
-QUERY_HEADER := $(wildcard query/*.h)
+QUERY_HEADER := $(wildcard query/*.h) $(COMMON_HEADERS)
 
-$(OBJECTS): %.o: query/%.c $(QUERY_HEADER) infer/variables.h infer/hash_table.h infer/trace.h
+$(OBJECTS): %.o: query/%.c $(QUERY_HEADER)
 	$(CC) $(CFLAGS) -o $@ -c $<
 

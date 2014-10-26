@@ -13,6 +13,7 @@ LIBPPP := libppp.a
 
 .DEFAULT_GOAL := all
 
+include common/makefile.mk	# AND COMMON_HEADERS
 include test/makefile.mk
 
 all: $(LIBPPP) $(TESTS) 

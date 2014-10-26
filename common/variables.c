@@ -6,21 +6,21 @@
 
 pp_variable_t* new_pp_int(int value) {
 	pp_int_t* var = malloc(sizeof(pp_int_t));
-	var->super.type = INT;
+	var->super.type = PP_VARIABLE_INT;
 	var->value = value;
 	return (pp_variable_t*) var;
 }
 
 pp_variable_t* new_pp_float(float value) {
 	pp_float_t* var = malloc(sizeof(pp_float_t));
-	var->super.type = FLOAT;
+	var->super.type = PP_VARIABLE_FLOAT;
 	var->value = value;
 	return (pp_variable_t*) var;
 }
 
 pp_variable_t* new_pp_vector(size_t capacity) {
 	pp_vector_t* var = malloc(sizeof(pp_vector_t));
-	var->super.type = VECTOR;
+	var->super.type = PP_VARIABLE_VECTOR;
 	var->length = 0;
 	var->capacity = capacity;
 	var->value = calloc(capacity, sizeof(pp_variable_t*));
@@ -80,15 +80,15 @@ pp_variable_t* pp_variable_clone(pp_variable_t* variable) {
 	if (!variable) return 0;
 
 	switch (variable->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		{
 			return new_pp_int(PP_VARIABLE_INT_VALUE(variable));
 		}
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		{
 			return new_pp_float(PP_VARIABLE_FLOAT_VALUE(variable));
 		}
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		{
 			pp_vector_t* vec = (pp_vector_t*) new_pp_vector(PP_VARIABLE_VECTOR_CAPACITY(variable));
 			size_t length = PP_VARIABLE_VECTOR_LENGTH(variable);
@@ -112,11 +112,11 @@ int pp_variable_dump(pp_variable_t* variable, char* buffer, int buf_size) {
 	}
 
 	switch (variable->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		return snprintf(buffer, buf_size, "%d", PP_VARIABLE_INT_VALUE(variable));
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		return snprintf(buffer, buf_size, "%f", PP_VARIABLE_FLOAT_VALUE(variable));
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		{
 			int num_written = 0;
 			num_written += snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, "[");
@@ -136,11 +136,11 @@ int pp_variable_dump(pp_variable_t* variable, char* buffer, int buf_size) {
 
 int pp_variable_to_int(pp_variable_t* variable) {
 	switch (variable->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		return PP_VARIABLE_INT_VALUE(variable);
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		return (int) PP_VARIABLE_FLOAT_VALUE(variable);
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		return 0;
 	}
 	return 0;
@@ -148,11 +148,11 @@ int pp_variable_to_int(pp_variable_t* variable) {
 
 float pp_variable_to_float(pp_variable_t* variable) {
 	switch (variable->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		return (float) PP_VARIABLE_INT_VALUE(variable);
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		return PP_VARIABLE_FLOAT_VALUE(variable);
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		return 0;
 	}
 	return 0;
@@ -160,11 +160,11 @@ float pp_variable_to_float(pp_variable_t* variable) {
 
 float* pp_variable_to_float_vector(pp_variable_t* variable) {
 	switch (variable->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		return 0;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		return 0; 
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		{
 			size_t length = PP_VARIABLE_VECTOR_LENGTH(variable);
 			float* vec = malloc(length * sizeof(float));
@@ -179,11 +179,11 @@ float* pp_variable_to_float_vector(pp_variable_t* variable) {
 }
 int* pp_variable_to_int_vector(pp_variable_t* variable) {
 	switch (variable->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		return 0;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		return 0; 
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		{
 			size_t length = PP_VARIABLE_VECTOR_LENGTH(variable);
 			int* vec = malloc(length * sizeof(int));
@@ -203,33 +203,33 @@ int pp_variable_equal(pp_variable_t* lhs, pp_variable_t* rhs) {
 	}
 
 	switch (lhs->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		switch (rhs->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			return PP_VARIABLE_INT_VALUE(lhs) == PP_VARIABLE_INT_VALUE(rhs);
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			return PP_VARIABLE_INT_VALUE(lhs) == PP_VARIABLE_FLOAT_VALUE(rhs);
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			return 0;	
 		}
 		break;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		switch (rhs->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			return PP_VARIABLE_FLOAT_VALUE(lhs) == PP_VARIABLE_INT_VALUE(rhs);
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			return PP_VARIABLE_FLOAT_VALUE(lhs) == PP_VARIABLE_FLOAT_VALUE(rhs);
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			return 0;	
 		}
 		break;
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		switch (rhs->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			return 0;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			return 0;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				size_t length = PP_VARIABLE_VECTOR_LENGTH(lhs);
 				if (length != PP_VARIABLE_VECTOR_LENGTH(rhs)) {
@@ -272,13 +272,13 @@ void pp_variable_destroy(pp_variable_t* variable) {
 	if (!variable) return ;
 
 	switch (variable->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		free(variable);
 		break;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		free(variable);
 		break;
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		{
 			pp_vector_t* var = (pp_vector_t*) variable;
 			for (unsigned i = 0; i != var->length; ++i) {

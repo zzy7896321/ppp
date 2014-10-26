@@ -3,8 +3,8 @@
 
 #include "../defs.h"
 #include "parse.h"
-#include "symbol_table.h"
-#include "list.h"
+#include "../common/symbol_table.h"
+#include "../common/list.h"
 
 typedef struct model_map_t
 {

@@ -3,61 +3,61 @@
 
 int execute_add(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr) {
 	switch (left->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				*result_ptr = new_pp_int(PP_VARIABLE_INT_VALUE(left) + PP_VARIABLE_INT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_INT_VALUE(left) + PP_VARIABLE_FLOAT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": INT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_FLOAT_VALUE(left) + PP_VARIABLE_INT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_FLOAT_VALUE(left) + PP_VARIABLE_FLOAT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": FLOAT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": VECTOR and INT");
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": VECTOR and FLOAT");
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{	
 				size_t l_length = PP_VARIABLE_VECTOR_LENGTH(left);
 				size_t r_length = PP_VARIABLE_VECTOR_LENGTH(right);
@@ -95,61 +95,61 @@ int execute_add(pp_variable_t* left, pp_variable_t* right, pp_variable_t** resul
 
 int execute_sub(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr) {
 	switch (left->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				*result_ptr = new_pp_int(PP_VARIABLE_INT_VALUE(left) - PP_VARIABLE_INT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_INT_VALUE(left) - PP_VARIABLE_FLOAT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": INT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_FLOAT_VALUE(left) - PP_VARIABLE_INT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_FLOAT_VALUE(left) - PP_VARIABLE_FLOAT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": FLOAT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": VECTOR and INT");
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": VECTOR and FLOAT");
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{	
 				size_t l_length = PP_VARIABLE_VECTOR_LENGTH(left);
 				size_t r_length = PP_VARIABLE_VECTOR_LENGTH(right);
@@ -186,48 +186,48 @@ int execute_sub(pp_variable_t* left, pp_variable_t* right, pp_variable_t** resul
 }
 int execute_mul(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr) {
 	switch (left->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				*result_ptr = new_pp_int(PP_VARIABLE_INT_VALUE(left) * PP_VARIABLE_INT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_INT_VALUE(left) * PP_VARIABLE_FLOAT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": INT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_FLOAT_VALUE(left) * PP_VARIABLE_INT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				*result_ptr = new_pp_float(PP_VARIABLE_FLOAT_VALUE(left) * PP_VARIABLE_FLOAT_VALUE(right));
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": FLOAT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, ": * is not defined for vectors");
 		break;
 	}
@@ -237,9 +237,9 @@ int execute_mul(pp_variable_t* left, pp_variable_t* right, pp_variable_t** resul
 
 int execute_div(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr) {
 	switch (left->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				if (!PP_VARIABLE_INT_VALUE(right)) {
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_DIVISION_BY_ZERO, "");
@@ -248,7 +248,7 @@ int execute_div(pp_variable_t* left, pp_variable_t* right, pp_variable_t** resul
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				if (!PP_VARIABLE_INT_VALUE(right)) {
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_DIVISION_BY_ZERO, "");
@@ -257,16 +257,16 @@ int execute_div(pp_variable_t* left, pp_variable_t* right, pp_variable_t** resul
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": INT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		switch (right->type) {
-		case INT:
+		case PP_VARIABLE_INT:
 			{
 				if (!PP_VARIABLE_INT_VALUE(right)) {
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_DIVISION_BY_ZERO, "");
@@ -275,7 +275,7 @@ int execute_div(pp_variable_t* left, pp_variable_t* right, pp_variable_t** resul
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}			
 			break;
-		case FLOAT:
+		case PP_VARIABLE_FLOAT:
 			{
 				if (!PP_VARIABLE_INT_VALUE(right)) {
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_DIVISION_BY_ZERO, "");
@@ -284,14 +284,14 @@ int execute_div(pp_variable_t* left, pp_variable_t* right, pp_variable_t** resul
 				pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 			}
 			break;
-		case VECTOR:
+		case PP_VARIABLE_VECTOR:
 			{
 				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, ": FLOAT and VECTOR");
 			}
 			break;
 		}
 		break;
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, ": / is not defined for vectors");
 		break;
 	}
@@ -311,13 +311,13 @@ int execute_if_expr(IfExprNode* expr, pp_trace_t* trace, pp_variable_t** result_
 
 	int condition_true = 0;
 	switch (condition->type) {
-	case INT:
+	case PP_VARIABLE_INT:
 		condition_true = !!PP_VARIABLE_INT_VALUE(condition);
 		break;
-	case FLOAT:
+	case PP_VARIABLE_FLOAT:
 		condition_true = !!PP_VARIABLE_FLOAT_VALUE(condition);
 		break;
-	case VECTOR:
+	case PP_VARIABLE_VECTOR:
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_SCALAR_TYPE_AS_CONDITION, "");
 	}
 	pp_variable_destroy(condition);
@@ -424,7 +424,7 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 
 					ExprSeqNode* expr_seq = index_var->expr_seq;
 					while (expr_seq) {
-						if (!var || var->type != VECTOR) {
+						if (!var || var->type != PP_VARIABLE_VECTOR) {
 							pp_sample_error_return(PP_SAMPLE_FUNCTION_SUBSCRIPTING_TO_NON_VECTOR, "%s", name);
 						}
 						ExprNode* expr = expr_seq->expr;
@@ -434,7 +434,7 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 							pp_sample_error_return(status, "");
 						}
 
-						if (sub->type != INT) {
+						if (sub->type != PP_VARIABLE_INT) {
 							pp_variable_destroy(sub);
 							pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION, "");
 						}
@@ -469,15 +469,15 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 						}
 					}
 					switch (var->type) {
-					case INT:
+					case PP_VARIABLE_INT:
 						PP_VARIABLE_INT_VALUE(var) = -PP_VARIABLE_INT_VALUE(var);
 						*result_ptr = var;
 						pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
-					case FLOAT:
+					case PP_VARIABLE_FLOAT:
 						PP_VARIABLE_FLOAT_VALUE(var) = -PP_VARIABLE_FLOAT_VALUE(var);
 						*result_ptr = var;
 						pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
-					case VECTOR:
+					case PP_VARIABLE_VECTOR:
 						pp_variable_destroy(var);
 						pp_sample_error_return(	PP_SAMPLE_FUNCTION_INVALID_OPERAND_TYPE, "");
 					}
@@ -572,7 +572,7 @@ int get_variable_ptr(VariableNode* variable, pp_trace_t* trace, pp_variable_t***
 					vec = new_pp_vector(16);
 					*vec_ptr = vec;
 				}
-				else if (vec->type != VECTOR) {
+				else if (vec->type != PP_VARIABLE_VECTOR) {
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_SUBSCRIPTING_TO_NON_VECTOR, ": %s", name);
 				}
 
@@ -582,7 +582,7 @@ int get_variable_ptr(VariableNode* variable, pp_trace_t* trace, pp_variable_t***
 				if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 					pp_sample_error_return(status, "");
 				}
-				if (sub->type != INT) {
+				if (sub->type != PP_VARIABLE_INT) {
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION, "");
 				}
 				int index = PP_VARIABLE_INT_VALUE(sub);
@@ -784,7 +784,7 @@ int execute_for_stmt(ForStmtNode* stmt, pp_trace_t* trace) {
 	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 		pp_sample_error_return(status, "");
 	}
-	if (loop_var->type != INT) {
+	if (loop_var->type != PP_VARIABLE_INT) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
 
@@ -794,7 +794,7 @@ int execute_for_stmt(ForStmtNode* stmt, pp_trace_t* trace) {
 		pp_variable_destroy(loop_var);
 		pp_sample_error_return(status, "");
 	}
-	if (end_var->type != INT) {
+	if (end_var->type != PP_VARIABLE_INT) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
 

@@ -1,8 +1,8 @@
 
-OBJECTS := parse.o list.o ilist.o symbol_table.o interface.o
+OBJECTS := parse.o interface.o
 OBJS += $(OBJECTS)
 
-PARSE_HEADER := $(wildcard parse/*.h)
+PARSE_HEADER := $(wildcard parse/*.h) $(COMMON_HEADERS)
 
 
 $(OBJECTS): %.o: parse/%.c $(PARSE_HEADER)

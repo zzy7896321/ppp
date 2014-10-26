@@ -1,17 +1,15 @@
 #ifndef INFER_H_
 #define INFER_H_
 
-//#include "../defs.h"
-
 #include "../defs.h"
 #include "../ppp.h"
 #include "../parse/parse.h"
 #include "../parse/interface.h"
-#include "../parse/list.h"
-#include "../parse/ilist.h"
-#include "../parse/symbol_table.h"
-#include "variables.h"
-#include "trace.h"
+#include "../common/list.h"
+#include "../common/ilist.h"
+#include "../common/symbol_table.h"
+#include "../common/variables.h"
+#include "../common/trace.h"
 #include "../query/query.h"
 #include "../debug.h"
 
@@ -91,43 +89,5 @@ int trace_store_insert(struct pp_instance_t* instance, void* raw_data);
 float getsample(struct BNVertexDraw* vertexDraw);
 float getcomp(struct BNVertexCompute* vertexComp);
 */
-/************************************** Sample Functions ******************************************/
-
-float randomC();
-float randomR();
-float randomL();
-
-int flip(float p);
-float flip_logprob(int value, float p);
-
-float flipD();
-float flipD_logprob(float value);
-
-float log_flip(float p);
-float log_flip_logprob(float value, float p);
-
-int multinomial(float theta[], int n);
-float multinomial_logprob(int m, float theta[], int n);
-
-float uniform(float low, float high);
-float uniformDiscrete(int low, int high);
-
-float gaussian(float mu, float sigma);
-float gaussian_logprob(float x, float mu, float sigma);
-
-float gamma1(float a, float b); // avoid name conflict with gcc built-in function gamma
-float gamma_logprob(float x, float a, float b);
-
-float beta(float a, float b);
-float beta_logprob(float x, float a, float b);
-
-float binomial(float p, int n);
-float binomial_lgoprob(float s, float p, int n);
-
-float poisson(int mu);
-float poisson_logprob(float k, int mu);
-
-float* dirichlet(float alpha[], int n);
-float dirichlet_logprob(float theta[], float alpha[], int n);
 
 #endif

@@ -2,8 +2,8 @@
 #define EXECUTE_H
 
 #include "infer.h"
-#include "variables.h"
-#include "trace.h"
+#include "../common/variables.h"
+#include "../common/trace.h"
 
 int execute_add(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr);
 int execute_sub(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr);

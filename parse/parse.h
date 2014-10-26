@@ -1,9 +1,9 @@
 #ifndef PARSE_H_
 #define PARSE_H_
 
-#include "symbol_table.h"
-#include "list.h"
-#include "ilist.h"
+#include "../common/symbol_table.h"
+#include "../common/list.h"
+#include "../common/ilist.h"
 #include "../infer/erp.h"
 #include <stdlib.h>
 #include <stddef.h>

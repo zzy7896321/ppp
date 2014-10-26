@@ -1,11 +1,13 @@
 #ifndef TRACE_H
 #define TRACE_H
 
-#include "hash_table.h"
 #include "variables.h"
 
 #include <string.h>
 #include <stddef.h>
+#include "hash_table.h"
+
+DECLARE_HASH_TABLE(variable, const char*, pp_variable_t*);
 
 typedef struct pp_trace_t {
 	size_t struct_size;	// to distinguish structs inherited from pp_trace_t
