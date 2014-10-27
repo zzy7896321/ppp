@@ -45,10 +45,6 @@ int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t*
 		*internal_data_ptr = mh_sampler;
 		//FIXME what if !mh_sampler_has_same_model ?? possible memory leak!!
 
-		#ifdef ENABLE_MEM_PROFILE
-			printf("\nmh_sampling, before init trace\n");
-			mem_profile_print();
-		#endif
 
 		//ERR_OUTPUT("sampling initial trace\n");
 		int status = mh_sampler_init_trace(mh_sampler);
@@ -56,10 +52,6 @@ int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t*
 			pp_sample_error_return(status, "");	
 		}
 
-		#ifdef ENABLE_MEM_PROFILE
-			printf("\nmh_sampling, after init trace\n");
-			mem_profile_print();
-		#endif
 	}
 
 	for (unsigned i = 0; i != g_mh_sampler_burn_in_iterations; ++i) {
@@ -67,10 +59,6 @@ int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t*
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			pp_sample_error_return(status, "");
 		}
-		#ifdef ENABLE_MEM_PROFILE
-			printf("\nmh_sampling, after burn in %u\n", i);
-			mem_profile_print();
-		#endif
 	}
 
 	/* run mcmc */
@@ -80,10 +68,6 @@ int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t*
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			pp_sample_error_return(status, "");
 		}
-		#ifdef ENABLE_MEM_PROFILE
-			printf("\nmh_sampling, after mh round %u\n", i);
-			mem_profile_print();
-		#endif
 	}
 
 	/*static char buffer[8000];
@@ -304,8 +288,6 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 		}
 	}
 
-	/* note: old_sample->value is managed in current_trace->variable_hash_table, but
-		new_sample->value is not. new_sample->value needs to be freed manually. */
 	mh_sampling_sample_t* old_sample = erp_entry->value;
 	erp_entry->value = new_sample;	
 
@@ -346,7 +328,6 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 
 	/* recover old trace */
 	erp_entry->value = old_sample;
-	pp_variable_destroy(new_sample->value);
 	mh_sampling_sample_destroy(new_sample);
 
 	/* reject invaid runs */
@@ -434,7 +415,7 @@ void* mh_sampling_name_to_node(const char* name) {
 
 mh_sampling_sample_t* new_mh_sampling_sample(pp_variable_t* value, float logprob, size_t num_param, ...) {
 	mh_sampling_sample_t* sample = malloc(sizeof(mh_sampling_sample_t) + sizeof(pp_variable_t*) * num_param);
-	sample->value = value;
+	sample->value = pp_variable_clone(value);
 	sample->logprob = logprob;
 	sample->num_param = num_param;
 
@@ -508,8 +489,8 @@ int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_samplin
 			}
 			*result_ptr = new_pp_int(sample);
 			trace->logprob += logprob;
-			free(theta);
 			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, pp_variable_float_array_to_vector(theta, n));
+			free(theta);
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_UNIFORM:
@@ -604,6 +585,9 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			pp_sample_error_return(status, "");
 		}
 	}
+	if (*result_ptr) {
+		pp_variable_destroy(*result_ptr);
+	}
 	*result_ptr = pp_variable_clone(old_sample->value);
 
 	#define EXECUTE_DRAW_STMT_GET_PARAM(n)	\
@@ -649,8 +633,8 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			int sample = PP_VARIABLE_INT_VALUE(*result_ptr);
 			float logprob = multinomial_logprob(sample, theta, n);
 			trace->logprob += logprob;
-			free(theta);
 			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, pp_variable_float_array_to_vector(theta, n));
+			free(theta);
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_UNIFORM:
@@ -755,6 +739,7 @@ mh_sampling_sample_t* mh_sampling_sample_clone(mh_sampling_sample_t* sample) {
 }
 
 void mh_sampling_sample_destroy(mh_sampling_sample_t* sample) {
+	pp_variable_destroy(sample->value);
 	for (size_t i = 0; i != sample->num_param; ++i) {
 		pp_variable_destroy(sample->param[i]);
 	}

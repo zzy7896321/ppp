@@ -96,10 +96,6 @@ struct pp_trace_store_t* pp_sample(struct pp_state_t* state, const char* model_n
 			return 0;
 		}
 
-		#ifdef ENABLE_MEM_PROFILE
-			printf("\nSample round %u\n", i);
-			mem_profile_print();
-		#endif
 		/*ERR_OUTPUT("sample round %d\n", i);
 		char buffer[8096];
 		pp_trace_dump(traces->trace[i], buffer, 8096);

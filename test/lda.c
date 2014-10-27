@@ -98,6 +98,7 @@ int main()
 
     for (int i = 0; i < 4; ++i)
         pp_variable_destroy(param[i]);
+	free(param);
 
 #ifdef ENABLE_MEM_PROFILE
     mem_profile_print();

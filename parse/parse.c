@@ -1200,7 +1200,7 @@ struct NumericalValueNode* parse_numerical_value(struct ParserState* ps)
     if (!integer_value) return failure("parse_numerical_value: integer_value expected");
 
     if (accept(ps, ".")) {
-        char digits[MAX_INTEGER_VALUE_SIZE+2];
+        char digits[MAX_INTEGER_VALUE_SIZE+3];
         int length = 0;
         digits[length++] = '.';
         while (length < MAX_INTEGER_VALUE_SIZE && isdigit(peek(ps))) {
@@ -1213,6 +1213,7 @@ struct NumericalValueNode* parse_numerical_value(struct ParserState* ps)
             do {ps->pointer++;} while (isdigit(peek(ps))); 
         }
 
+		digits[length++] = '\0';
 
         real_value = new_node(sizeof(struct RealValueNode), ps);
         real_value->super.type = REAL_VALUE;
