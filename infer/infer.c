@@ -1,12 +1,14 @@
 
 #include "infer.h"
 #include "../debug.h"
+#include "mh_sampler.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
+#include "../common/mem_profile.h"
 
 unsigned g_sample_iterations = 200;
 char* g_sample_method = "REJECTION";
@@ -37,6 +39,24 @@ void init_sample_method() {
 	else {
 		ERR_OUTPUT("SAMPLE METHOD = Metropolis-Hastings\n");
 		g_sample_function = mh_sampling;
+
+		char* burn_in_round = getenv("MH_BURN_IN");
+		if (burn_in_round) {
+			g_mh_sampler_burn_in_iterations = atoi(burn_in_round);
+		}
+		ERR_OUTPUT("MH_BURN_IN = %d\n", g_mh_sampler_burn_in_iterations);
+
+		char* lag = getenv("MH_LAG");
+		if (lag) {
+			g_mh_sampler_lag = atoi(lag);
+		}
+		ERR_OUTPUT("MH_LAG = %d\n", g_mh_sampler_lag);
+
+		char* max_initial_round = getenv("MH_MAX_INITIAL_ROUND");
+		if (max_initial_round) {
+			g_mh_sampler_maximum_initial_round = atoi(max_initial_round);
+		}
+		ERR_OUTPUT("MH_MAX_INITIAL_ROUND = %d\n", g_mh_sampler_maximum_initial_round);
 	}
 }
 
@@ -75,6 +95,11 @@ struct pp_trace_store_t* pp_sample(struct pp_state_t* state, const char* model_n
 			pp_trace_store_destroy(traces);
 			return 0;
 		}
+
+		#ifdef ENABLE_MEM_PROFILE
+			printf("\nSample round %u\n", i);
+			mem_profile_print();
+		#endif
 		/*ERR_OUTPUT("sample round %d\n", i);
 		char buffer[8096];
 		pp_trace_dump(traces->trace[i], buffer, 8096);

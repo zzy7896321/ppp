@@ -4,26 +4,40 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef ENABLE_MEM_PROFILE
+#include "../common/mem_profile.h"
+
+#define PP_VARIABLE_ALLOC(type, count) PROFILE_MEM_ALLOC(type, count)
+#define PP_VARIABLE_DEALLOC(type, ptr, count) PROFILE_MEM_FREE(type, ptr, count)
+
+#else
+
+#define PP_VARIABLE_ALLOC(type, count) (type*) malloc(sizeof(type) * count)
+#define PP_VARIABLE_DEALLOC(type, ptr, count) free(ptr)
+
+#endif
+
 pp_variable_t* new_pp_int(int value) {
-	pp_int_t* var = malloc(sizeof(pp_int_t));
+	pp_int_t* var = PP_VARIABLE_ALLOC(pp_int_t, 1);
 	var->super.type = PP_VARIABLE_INT;
 	var->value = value;
 	return (pp_variable_t*) var;
 }
 
 pp_variable_t* new_pp_float(float value) {
-	pp_float_t* var = malloc(sizeof(pp_float_t));
+	pp_float_t* var = PP_VARIABLE_ALLOC(pp_float_t, 1);
 	var->super.type = PP_VARIABLE_FLOAT;
 	var->value = value;
 	return (pp_variable_t*) var;
 }
 
 pp_variable_t* new_pp_vector(size_t capacity) {
-	pp_vector_t* var = malloc(sizeof(pp_vector_t));
+	pp_vector_t* var = PP_VARIABLE_ALLOC(pp_vector_t, 1);
 	var->super.type = PP_VARIABLE_VECTOR;
 	var->length = 0;
 	var->capacity = capacity;
-	var->value = calloc(capacity, sizeof(pp_variable_t*));
+	var->value = PP_VARIABLE_ALLOC(pp_variable_t*, capacity);
+	memset(var->value, 0, sizeof(pp_variable_t*) * capacity);
 	return (pp_variable_t*) var;
 }
 
@@ -64,12 +78,14 @@ int pp_variable_vector_increase_capacity(pp_vector_t* vector, int size_to_fit) {
 	}
 
 	if (new_capacity > PP_VARIABLE_VECTOR_CAPACITY(vector)) {
-		pp_variable_t** new_arr = calloc(new_capacity, sizeof(pp_variable_t*));
+		pp_variable_t** new_arr = PP_VARIABLE_ALLOC(pp_variable_t*, new_capacity);
 		if (!new_arr) {
 			return 0;
 		}
+		memset(new_arr, 0, sizeof(pp_variable_t*) * new_capacity);
+
 		memcpy(new_arr, vector->value, sizeof(pp_variable_t*) * vector->length);
-		free(vector->value);
+		PP_VARIABLE_DEALLOC(pp_variable_t*, vector->value, vector->capacity);
 		vector->value = new_arr;
 		vector->capacity = new_capacity;
 	}
@@ -273,10 +289,10 @@ void pp_variable_destroy(pp_variable_t* variable) {
 
 	switch (variable->type) {
 	case PP_VARIABLE_INT:
-		free(variable);
+		PP_VARIABLE_DEALLOC(pp_int_t, variable, 1);
 		break;
 	case PP_VARIABLE_FLOAT:
-		free(variable);
+		PP_VARIABLE_DEALLOC(pp_float_t, variable, 1);
 		break;
 	case PP_VARIABLE_VECTOR:
 		{
@@ -285,7 +301,8 @@ void pp_variable_destroy(pp_variable_t* variable) {
 				pp_variable_destroy(var->value[i]);
 			}
 		}
-		free(variable);
+		PP_VARIABLE_DEALLOC(pp_variable_t*, PP_VARIABLE_VECTOR_VALUE(variable), PP_VARIABLE_VECTOR_CAPACITY(variable));
+		PP_VARIABLE_DEALLOC(pp_vector_t, variable, 1);
 		break;
 	}
 }

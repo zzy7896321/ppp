@@ -8,8 +8,14 @@
 #include "../parse/interface.h"
 #include "../common/variables.h"
 
+#include "../common/mem_profile.h"
+
 int main()
 {
+#ifdef ENABLE_MEM_PROFILE
+    mem_profile_init();
+#endif
+
     /* use pointers to structs because the client doesn't need to know the struct sizes */
     struct pp_state_t* state;
     struct pp_instance_t* instance;
@@ -85,6 +91,18 @@ int main()
 
 	// pp_free is broken
     pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */
+
+    pp_trace_store_destroy(traces);
+
+    pp_query_destroy(query);
+
+    for (int i = 0; i < 4; ++i)
+        pp_variable_destroy(param[i]);
+
+#ifdef ENABLE_MEM_PROFILE
+    mem_profile_print();
+    mem_profile_destroy();
+#endif
 
     return 0;
 }

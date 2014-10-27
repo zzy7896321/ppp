@@ -48,12 +48,15 @@ int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_vari
 		/* check condition */
 		int acc_result = pp_query_acceptor(trace, query);
 		if (acc_result == 1) {
+			// ERR_OUTPUT("accept\n");
 			break;
 		}
 		else if (acc_result == 0){
+			// ERR_OUTPUT("reject\n");
 			pp_trace_destroy(trace);
 		}
 		else {
+			pp_trace_destroy(trace);
 			pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 		}
 	}

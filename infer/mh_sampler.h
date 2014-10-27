@@ -66,7 +66,14 @@ void* mh_sampling_name_to_node(const char* name);
 #define mh_sampling_destroy_name(name) free(name)
 
 
-DECLARE_HASH_TABLE(mh_sampling_erp, char*, mh_sampling_sample_t*);
+//DECLARE_HASH_TABLE(mh_sampling_erp, char*, mh_sampling_sample_t*);
+#define HASH_TABLE_PREFIX mh_sampling_erp_hash_table
+#define HASH_TABLE_KEY_TYPE char*
+#define HASH_TABLE_VALUE_TYPE mh_sampling_sample_t*
+#define HASH_TABLE_DECLARE_ONLY 1
+#define HASH_TABLE_DECLARE_DUMP 1
+#define HASH_TABLE_DEFINE_STRUCT 1
+#include "../common/hash_table.h"
 
 struct mh_sampling_trace_t {
 	pp_trace_t super;

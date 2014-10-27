@@ -25,24 +25,24 @@ int main()
     state = pp_new_state();
     printf("> state created\n");
 
-    pp_load_file(state, "parse/models/flip.model");
+    pp_load_file(state, "parse/models/mix.model");
     printf("> file loaded\n");
 
 	if (!state) return 1;
 	
-	ModelNode* model = model_map_find(state->model_map, state->symbol_table, "flip_example");
+	ModelNode* model = model_map_find(state->model_map, state->symbol_table, "mix");
 	printf(dump_model(model));
 
-    query = pp_compile_query("x>2 x<3");
+    query = pp_compile_query("x[0] > 2 x[0] < 3");
     printf("> condition compiled\n");
 
 
-    traces = pp_sample(state, "flip_example", 0, query);
+    traces = pp_sample(state, "mix", 0, query);
     printf("> traces sampled\n");
 
     pp_query_destroy(query);
     
-    query = pp_compile_query("f== 1");
+    query = pp_compile_query("f[0] == 1");
     printf("> query compiled\n");
 
     pp_get_result(traces, query, &result);  // "get_result" may not be a good name 

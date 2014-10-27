@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "mem_profile.h"
+
 pp_trace_t* new_pp_trace() {
 	pp_trace_t* trace = malloc(sizeof(pp_trace_t));
 	pp_trace_init(trace, sizeof(pp_trace_t));
@@ -14,7 +16,7 @@ pp_trace_t* new_pp_trace() {
 
 void pp_trace_init(pp_trace_t* trace, size_t struct_size) {
 	trace->struct_size = struct_size;
-	trace->variable_map = new_variable_hash_table(0x10000);
+	trace->variable_map = new_variable_hash_table(8, 0.8);
 	trace->logprob = 0.0;
 }
 
@@ -22,7 +24,7 @@ int pp_trace_dump(pp_trace_t* trace, char* buffer, int buf_size) {
 	int num_written = 0;
 	buffer[0] = '\0';
 	num_written += snprintf(buffer + num_written, buf_size - num_written, "logprob = %f\n", trace->logprob);
-	num_written += variable_hash_table_dump(trace->variable_map, buffer + num_written, buf_size - num_written);
+	num_written += variable_hash_table_dump(buffer + num_written, buf_size - num_written, trace->variable_map);
 	return num_written;
 }
 
@@ -63,25 +65,44 @@ unsigned bkdr_hash(const char* str) {
 	return hash;
 }
 
+#define HASH_TABLE_PREFIX variable_hash_table
+#define HASH_TABLE_KEY_TYPE const char*
+#define HASH_TABLE_VALUE_TYPE pp_variable_t*
+#define HASH_TABLE_DEFINE_STRUCT 0
+#define HASH_TABLE_VALUE_DEFAULT_VALUE 0
 #define HASH_TABLE_HASH_FUNCTION(key) (bkdr_hash(key))
-#define HASH_TABLE_COMPARATOR(key1, key2) (!strcmp(key1, key2))
-#define HASH_TABLE_DESTROY_KEY(key)
-#define HASH_TABLE_DESTROY_VALUE(value) pp_variable_destroy(value)
-#define HASH_TABLE_KEY_NOT_FOUND_VALUE 0
-#define HASH_TABLE_VALUE_DEFAULT 0
-#define HASH_TABLE_DUMP_KEY(buffer, buf_size, key) snprintf(buffer, buf_size, key)
-#define HASH_TABLE_DUMP_VALUE(buffer, buf_size, value) pp_variable_dump(value, buffer, buf_size)
-#define HASH_TABLE_CLONE_KEY(key) key
-/* memory leak */
-#define HASH_TABLE_CLONE_VALUE(value) pp_variable_clone(value)
-DEFINE_HASH_TABLE(variable, const char*, struct pp_variable_t*)
-#undef HASH_TABLE_HASH_FUNCTION
-#undef HASH_TABLE_COMPARATOR
-#undef HASH_TABLE_DESTROY_KEY
-#undef HASH_TABLE_DESTROY_VALUE
-#undef HASH_TABLE_KEY_NOT_FOUND_VALUE
-#undef HASH_TABLE_VALUE_DEFAULT
-#undef HASH_TABLE_DUMP_KEY
-#undef HASH_TABLE_DUMP_VALUE
-#undef HASH_TABLE_CLONE_KEY
-#undef HASH_TABLE_CLONE_VALUE
+#define HASH_TABLE_KEY_COMPARATOR(key1, key2) (!strcmp(key1, key2))
+#define HASH_TABLE_KEY_CLONE(var, key) (var = key)
+#define HASH_TABLE_VALUE_CLONE(var, value) (var = pp_variable_clone(value))
+#define HASH_TABLE_KEY_DESTRUCTOR(key) 
+#define HASH_TABLE_VALUE_DESTRUCTOR(value) pp_variable_destroy(value)
+#define HASH_TABLE_KEY_DUMP(buffer, buf_size, key) snprintf(buffer, buf_size, "%s", key)
+#define HASH_TABLE_VALUE_DUMP(buffer, buf_size, value) pp_variable_dump(value, buffer, buf_size)
+#ifdef ENABLE_MEM_PROFILE
+#define HASH_TABLE_ALLOC(type, count) PROFILE_MEM_ALLOC(type, count)
+#define HASH_TABLE_DEALLOC(type, ptr, count) PROFILE_MEM_FREE(type, ptr, count)
+#endif
+#include "hash_table.h"
+
+// #define HASH_TABLE_HASH_FUNCTION(key) (bkdr_hash(key))
+// #define HASH_TABLE_COMPARATOR(key1, key2) (!strcmp(key1, key2))
+// #define HASH_TABLE_DESTROY_KEY(key)
+// #define HASH_TABLE_DESTROY_VALUE(value) pp_variable_destroy(value)
+// #define HASH_TABLE_KEY_NOT_FOUND_VALUE 0
+// #define HASH_TABLE_VALUE_DEFAULT 0
+// #define HASH_TABLE_DUMP_KEY(buffer, buf_size, key) snprintf(buffer, buf_size, key)
+// #define HASH_TABLE_DUMP_VALUE(buffer, buf_size, value) pp_variable_dump(value, buffer, buf_size)
+// #define HASH_TABLE_CLONE_KEY(key) key
+// /* memory leak */
+// #define HASH_TABLE_CLONE_VALUE(value) pp_variable_clone(value)
+// DEFINE_HASH_TABLE(variable, const char*, struct pp_variable_t*)
+// #undef HASH_TABLE_HASH_FUNCTION
+// #undef HASH_TABLE_COMPARATOR
+// #undef HASH_TABLE_DESTROY_KEY
+// #undef HASH_TABLE_DESTROY_VALUE
+// #undef HASH_TABLE_KEY_NOT_FOUND_VALUE
+// #undef HASH_TABLE_VALUE_DEFAULT
+// #undef HASH_TABLE_DUMP_KEY
+// #undef HASH_TABLE_DUMP_VALUE
+// #undef HASH_TABLE_CLONE_KEY
+// #undef HASH_TABLE_CLONE_VALUE

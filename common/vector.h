@@ -6,24 +6,6 @@
 #include "macro_util.h"
 #include "../debug.h"
 
-#if defined(VECTOR_PREFIX) && defined(VECTOR_VALUE_TYPE)
-
-/* DECLARATION OF VECTOR */
-#ifdef __VEC
-#undef __VEC
-#endif
-#define __VEC VECTOR_PREFIX
-
-#ifdef __VEC_T
-#undef __VEC_T
-#endif
-#define __VEC_T CONCAT(__VEC, _t)
-
-#ifdef __V_T
-#undef __V_T
-#endif
-#define __V_T VECTOR_VALUE_TYPE 
-
 /*
 Macros:
 
@@ -36,7 +18,11 @@ VECTOR_VALUE_TYPE: type of values
 The following are optional:
 VECTOR_DECLARE_ONLY: non-zero value indicates only declaration is desired
 
-VECTOR_DECLARE_DUMP: non-zero value indiactes the dump function will be declared
+VECTOR_DEFINE_STRUCT: non-zero value indicates the struct should be defined
+	when VECTOR_DECLARE_ONLY is not defined or is 0, VECTOR_DEFINE_STRUCT defaults to 0
+	o.w. it defaults to 1
+
+VECTOR_DECLARE_DUMP: non-zero value indicates the dump function will be declared
 	automatically set to 1 if VECTOR_VALUE_DUMP is set
 
 The following must be present if VECTOR_DELARE_ONLY is not defined or is set to 0
@@ -62,33 +48,60 @@ VECTOR_VALUE_DUMP: the dump function of the value type
 	implies VECTOR_DECLARE_DUMP
 */
 
+#if defined(VECTOR_PREFIX) && defined(VECTOR_VALUE_TYPE)
+
+/* DECLARATION OF VECTOR */
+#ifdef __VEC
+#undef __VEC
+#endif
+#define __VEC VECTOR_PREFIX
+
+#ifdef __VEC_T
+#undef __VEC_T
+#endif
+#define __VEC_T CONCAT(__VEC, _t)
+
+#ifdef __VEC_V_T
+#undef __VEC_V_T
+#endif
+#define __VEC_V_T VECTOR_VALUE_TYPE
 
 #ifdef VEC_METHOD
 #undef VEC_METHOD
 #endif
 #define VEC_METHOD(method_name) CONCAT3(__VEC, _, method_name)
 
+#ifndef VECTOR_DEFINE_STRUCT
+#if !defined(VECTOR_DECLARE_ONLY) || VECTOR_DECLARE_ONLY == 0
+#	define VECTOR_DEFINE_STRUCT 1
+#else
+#	define VECTOR_DEFINE_STRUCT 0
+#endif
+#endif
+
 typedef struct __VEC_T __VEC_T;
+#if VECTOR_DEFINE_STRUCT != 0
 struct __VEC_T {
 	size_t capacity;
 	size_t size;
-	__V_T* data;
+	__VEC_V_T* data;
 };
+#endif
 
 /** vec_t* new_vec(int capacity); */
 __VEC_T* CONCAT(new_, __VEC)(int capacity);
 
-int VEC_METHOD(push_back)(__VEC_T* vector, __V_T value);
+int VEC_METHOD(push_back)(__VEC_T* vector, __VEC_V_T value);
 
-__V_T VEC_METHOD(pop_back)(__VEC_T* vector);
+__VEC_V_T VEC_METHOD(pop_back)(__VEC_T* vector);
 
-int VEC_METHOD(set)(__VEC_T* vector, size_t index, __V_T value);
+int VEC_METHOD(set)(__VEC_T* vector, size_t index, __VEC_V_T value);
 
-int VEC_METHOD(set_no_clone)(__VEC_T* vector, size_t index, __V_T value);
+int VEC_METHOD(set_no_clone)(__VEC_T* vector, size_t index, __VEC_V_T value);
 
-__V_T VEC_METHOD(at)(__VEC_T* vector, size_t index);
+__VEC_V_T VEC_METHOD(at)(__VEC_T* vector, size_t index);
 
-__V_T* VEC_METHOD(data)(__VEC_T* vector);
+__VEC_V_T* VEC_METHOD(data)(__VEC_T* vector);
 
 size_t VEC_METHOD(size)(__VEC_T* vector);
 
@@ -96,7 +109,7 @@ size_t VEC_METHOD(capacity)(__VEC_T* vector);
 
 int VEC_METHOD(empty)(__VEC_T* vector);
 
-int VEC_METHOD(resize)(__VEC_T* vector, size_t new_size, __V_T default_value);
+int VEC_METHOD(resize)(__VEC_T* vector, size_t new_size, __VEC_V_T default_value);
 
 int VEC_METHOD(resize_default)(__VEC_T* vector, size_t new_size);
 
@@ -111,6 +124,10 @@ int VEC_METHOD(shrink)(__VEC_T* vector, size_t new_capacity);
 int VEC_METHOD(shrink_to_fit)(__VEC_T* vector);
 
 int VEC_METHOD(clear)(__VEC_T* vector);
+
+__VEC_T* VEC_METHOD(clone)(__VEC_T* vector);
+
+__VEC_T* VEC_METHOD(clone_shallow)(__VEC_T* vector);
 
 /** void vec_destroy(vec_t* vector); */
 void VEC_METHOD(destroy)(__VEC_T* vector);
@@ -151,7 +168,7 @@ __VEC_T* CONCAT(new_, __VEC)(int capacity) {
 		return 0;
 	}
 
-	__V_T* data = VECTOR_ALLOC(__V_T, capacity);
+	__VEC_V_T* data = VECTOR_ALLOC(__VEC_V_T, capacity);
 	if (!data) {
 		VECTOR_DEALLOC(__VEC_T, vec, 1);
 		return 0;
@@ -169,20 +186,20 @@ int VEC_METHOD(increase_capacity)(__VEC_T* vector, size_t at_least) {
 	while (new_capacity > 0 && new_capacity < at_least) new_capacity <<= 1;
 	if (new_capacity <= 0) return 0;
 
-	__V_T* data = VECTOR_ALLOC(__V_T, new_capacity);
+	__VEC_V_T* data = VECTOR_ALLOC(__VEC_V_T, new_capacity);
 	if (!data) {
 		return 0;
 	}
 
-	memcpy(data, vector->data, sizeof(__V_T) * vector->size);
-	VECTOR_DEALLOC(__V_T, vector->data, vector->capacity);
+	memcpy(data, vector->data, sizeof(__VEC_V_T) * vector->size);
+	VECTOR_DEALLOC(__VEC_V_T, vector->data, vector->capacity);
 
 	vector->capacity = new_capacity;
 	vector->data = data;
 	return 1;
 }
 
-int VEC_METHOD(push_back)(__VEC_T* vector, __V_T value) {
+int VEC_METHOD(push_back)(__VEC_T* vector, __VEC_V_T value) {
 	if (vector->size == vector->capacity) {
 		if (!VEC_METHOD(increase_capacity)(vector, vector->size + 1)) {
 			return 0;
@@ -198,7 +215,7 @@ int VEC_METHOD(push_back)(__VEC_T* vector, __V_T value) {
 	return 1;
 }
 
-__V_T VEC_METHOD(pop_back)(__VEC_T* vector) {
+__VEC_V_T VEC_METHOD(pop_back)(__VEC_T* vector) {
 	#if !defined(VECTOR_NO_RANGE_CHECK) || VECTOR_NO_RANGE_CHECK == 0
 	if (vector->size == 0) {
 		return VECTOR_VALUE_DEFAULT_VALUE;
@@ -208,7 +225,7 @@ __V_T VEC_METHOD(pop_back)(__VEC_T* vector) {
 	return vector->data[--vector->size];
 }
 
-int VEC_METHOD(set)(__VEC_T* vector, size_t index, __V_T value) {
+int VEC_METHOD(set)(__VEC_T* vector, size_t index, __VEC_V_T value) {
 	#if !defined(VECTOR_NO_RANGE_CHECK) || VECTOR_NO_RANGE_CHECK == 0
 	if (index >= vector->size) return 0;
 	#endif
@@ -226,13 +243,9 @@ int VEC_METHOD(set)(__VEC_T* vector, size_t index, __V_T value) {
 	return 1;
 }
 
-int VEC_METHOD(set_no_clone)(__VEC_T* vector, size_t index, __V_T value) {
+int VEC_METHOD(set_no_clone)(__VEC_T* vector, size_t index, __VEC_V_T value) {
 	#if !defined(VECTOR_NO_RANGE_CHECK) || VECTOR_NO_RANGE_CHECK == 0
 	if (index >= vector->size) return 0;
-	#endif
-
-	#ifdef VECTOR_VALUE_DESTRUCTOR
-		VECTOR_VALUE_DESTRUCTOR(vector->data[index]);
 	#endif
 
 	vector->data[index] = value;
@@ -240,7 +253,7 @@ int VEC_METHOD(set_no_clone)(__VEC_T* vector, size_t index, __V_T value) {
 	return 1;
 }
 
-__V_T VEC_METHOD(at)(__VEC_T* vector, size_t index) {
+__VEC_V_T VEC_METHOD(at)(__VEC_T* vector, size_t index) {
 	#if !defined(VECTOR_NO_RANGE_CHECK) || VECTOR_NO_RANGE_CHECK == 0
 	if (index >= vector->size) return VECTOR_VALUE_DEFAULT_VALUE;
 	#endif
@@ -248,7 +261,7 @@ __V_T VEC_METHOD(at)(__VEC_T* vector, size_t index) {
 	return vector->data[index];
 }
 
-__V_T* VEC_METHOD(data)(__VEC_T* vector) {
+__VEC_V_T* VEC_METHOD(data)(__VEC_T* vector) {
 	return vector->data;
 }
 
@@ -264,7 +277,7 @@ int VEC_METHOD(empty)(__VEC_T* vector) {
 	return !vector->size;
 }
 
-int VEC_METHOD(resize)(__VEC_T* vector, size_t new_size, __V_T default_value) {
+int VEC_METHOD(resize)(__VEC_T* vector, size_t new_size, __VEC_V_T default_value) {
 	if (new_size == vector->size) return 1;
 
 	if (new_size < vector->size) {
@@ -321,13 +334,13 @@ int VEC_METHOD(dump)(char* buffer, int buf_size, __VEC_T* vector) {
 
 int VEC_METHOD(reserve)(__VEC_T* vector, size_t new_capacity) {
 	if (new_capacity > vector->capacity) {
-		__V_T* data = VECTOR_ALLOC(__V_T, new_capacity);
+		__VEC_V_T* data = VECTOR_ALLOC(__VEC_V_T, new_capacity);
 		if (!data) {
 			return 0;
 		}
 
-		memcpy(data, vector->data, sizeof(__V_T) * vector->size);
-		VECTOR_DEALLOC(__V_T, vector->data, vector->capacity);
+		memcpy(data, vector->data, sizeof(__VEC_V_T) * vector->size);
+		VECTOR_DEALLOC(__VEC_V_T, vector->data, vector->capacity);
 
 		vector->capacity = new_capacity;
 		vector->data = data;
@@ -339,13 +352,13 @@ int VEC_METHOD(shrink)(__VEC_T* vector, size_t new_capacity) {
 	if (new_capacity < vector->size) return 0;
 	if (new_capacity >= vector->capacity) return 1;
 
-	__V_T* data = VECTOR_ALLOC(__V_T, new_capacity);
+	__VEC_V_T* data = VECTOR_ALLOC(__VEC_V_T, new_capacity);
 	if (!data) {
 		return 0;
 	}
 
-	memcpy(data, vector->data, sizeof(__V_T) * vector->size);
-	VECTOR_DEALLOC(__V_T, vector->data, vector->capacity);
+	memcpy(data, vector->data, sizeof(__VEC_V_T) * vector->size);
+	VECTOR_DEALLOC(__VEC_V_T, vector->data, vector->capacity);
 
 	vector->capacity = new_capacity;
 	vector->data = data;
@@ -361,6 +374,38 @@ int VEC_METHOD(clear)(__VEC_T* vector) {
 	return VEC_METHOD(resize)(vector, 0, VECTOR_VALUE_DEFAULT_VALUE);
 }
 
+__VEC_T* VEC_METHOD(clone)(__VEC_T* vector) {
+	if (!vector) return 0;
+
+	__VEC_T* new_vector = CONCAT(new_, __VEC)(vector->capacity);
+	if (!new_vector) return 0;
+
+#ifdef VECTOR_VALUE_CLONE
+	{
+		size_t i;
+		for (i = 0; i != vector->size; ++i) {
+			VECTOR_VALUE_CLONE(new_vector->data[new_vector->size++], vector->data[i]);
+		}
+	}
+#else
+	memcpy(new_vector->data, vector->data, sizeof(__VEC_V_T) * vector->size);
+	new_vector->size = vector->size;
+#endif
+	return new_vector;
+}
+
+__VEC_T* VEC_METHOD(clone_shallow)(__VEC_T* vector) {
+	if (!vector) return 0;
+
+	__VEC_T* new_vector = CONCAT(new_, __VEC)(vector->capacity);
+	if (!new_vector) return 0;
+
+	memcpy(new_vector->data, vector->data, sizeof(__VEC_V_T) * vector->size);
+	new_vector->size = vector->size;
+
+	return new_vector;
+}
+
 void VEC_METHOD(destroy)(__VEC_T* vector) {
 	#ifdef VECTOR_VALUE_DESTRUCTOR
 	{
@@ -371,7 +416,7 @@ void VEC_METHOD(destroy)(__VEC_T* vector) {
 	}
 	#endif
 
-	VECTOR_DEALLOC(__V_T, vector->data, vector->capacity);
+	VECTOR_DEALLOC(__VEC_V_T, vector->data, vector->capacity);
 	VECTOR_DEALLOC(__VEC_T, vector, 1);
 }
 
@@ -403,7 +448,7 @@ void VEC_METHOD(destroy)(__VEC_T* vector) {
 
 #undef __VEC
 #undef ___VEC_T
-#undef ___V_T
+#undef ___VEC_V_T
 #undef VEC_METHOD
 
 #undef VECTOR_PREFIX
@@ -412,6 +457,8 @@ void VEC_METHOD(destroy)(__VEC_T* vector) {
 #ifdef VECTOR_DECLARE_DUMP
 #undef VECTOR_DECLARE_DUMP
 #endif
+
+#undef VECTOR_DEFINE_STRUCT
 
 #else
 

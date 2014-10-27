@@ -5,9 +5,17 @@
 
 #include <string.h>
 #include <stddef.h>
-#include "hash_table.h"
 
-DECLARE_HASH_TABLE(variable, const char*, pp_variable_t*);
+#include "hash_table.h.old"
+
+//DECLARE_HASH_TABLE(variable, const char*, pp_variable_t*);
+#define HASH_TABLE_PREFIX variable_hash_table
+#define HASH_TABLE_KEY_TYPE const char*
+#define HASH_TABLE_VALUE_TYPE pp_variable_t*
+#define HASH_TABLE_DECLARE_ONLY 1
+#define HASH_TABLE_DECLARE_DUMP 1
+#define HASH_TABLE_DEFINE_STRUCT 1
+#include "hash_table.h"
 
 typedef struct pp_trace_t {
 	size_t struct_size;	// to distinguish structs inherited from pp_trace_t
