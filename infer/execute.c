@@ -1,6 +1,8 @@
 #include "execute.h"
 #include "../debug.h"
 
+#include <assert.h>
+
 int execute_add(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr) {
 	switch (left->type) {
 	case PP_VARIABLE_INT:
@@ -532,10 +534,12 @@ int get_parameters(ExprSeqNode* expr_seq, pp_trace_t* trace, size_t num_expected
 	size_t i;
 
 	for (i = 0; i != num_expected && expr_seq; ++i, expr_seq = expr_seq->expr_seq) {
-		int status = execute_expr(expr_seq->expr, trace, &(result[i]));
+		pp_variable_t* param_result = 0;
+		int status = execute_expr(expr_seq->expr, trace, &param_result);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			REJECTION_SAMPLING_GET_PARAM_CLEAR_RETURN(status);
 		}
+		result[i] = param_result;
 	}
 
 	if (i != num_expected || expr_seq) {
@@ -784,23 +788,29 @@ int execute_for_stmt(ForStmtNode* stmt, pp_trace_t* trace) {
 	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 		pp_sample_error_return(status, "");
 	}
+	/* let the hash table manage the loop_var so that we do not need to free it manually */
+	if (*loop_var_ptr) {
+		pp_variable_destroy(*loop_var_ptr);
+	}
+	*loop_var_ptr = loop_var;
 	if (loop_var->type != PP_VARIABLE_INT) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
 
+	/* end_var is not visible to outside */
 	pp_variable_t* end_var = 0;
 	status = execute_expr(stmt->end_expr, trace, &end_var);
 	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
-		pp_variable_destroy(loop_var);
 		pp_sample_error_return(status, "");
 	}
 	if (end_var->type != PP_VARIABLE_INT) {
+		pp_variable_destroy(end_var);
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
 
 	/* FIXME end_var could be modified during the loop, 
 	   which means it should actually be reevaluated at the end of each loop */
-	*loop_var_ptr = loop_var;
+	/* FIXME the value of loop_var is changed directly, may not work if variables are shared in future versions */
 	for (; PP_VARIABLE_INT_VALUE(*loop_var_ptr) <= PP_VARIABLE_INT_VALUE(end_var); ++PP_VARIABLE_INT_VALUE(*loop_var_ptr)) {
 		StmtsNode* stmts = stmt->stmts;
 		while (stmts) {

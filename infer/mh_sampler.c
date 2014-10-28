@@ -215,6 +215,10 @@ int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_
 	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 		pp_sample_error_return(status, "");
 	}
+	if (*loop_var_ptr) {
+		pp_variable_destroy(*loop_var_ptr);
+	}
+	*loop_var_ptr = loop_var;
 	if (loop_var->type != PP_VARIABLE_INT) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
@@ -222,14 +226,12 @@ int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_
 	pp_variable_t* end_var = 0;
 	status = execute_expr(stmt->end_expr, (pp_trace_t*) trace, &end_var);
 	if (status != PP_SAMPLE_FUNCTION_NORMAL) {
-		pp_variable_destroy(loop_var);
 		pp_sample_error_return(status, "");
 	}
 	if (end_var->type != PP_VARIABLE_INT) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_LOOP_VARIABLE, "");
 	}
 
-	*loop_var_ptr = loop_var;
 	for (; PP_VARIABLE_INT_VALUE(*loop_var_ptr) <= PP_VARIABLE_INT_VALUE(end_var); ++PP_VARIABLE_INT_VALUE(*loop_var_ptr)) {
 		loop_index_stack_push(mh_sampler->loop_index, PP_VARIABLE_INT_VALUE(*loop_var_ptr));
 		StmtsNode* stmts = stmt->stmts;

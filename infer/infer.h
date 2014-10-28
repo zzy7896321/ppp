@@ -41,17 +41,21 @@ extern const char* pp_sample_error_string[PP_SAMPLE_FUNCTION_ERROR_NUM];
 
 #define pp_sample_error_return(status, fmt, ...) \
 	do {	\
-		ERR_OUTPUT("%s" fmt "\n", pp_sample_get_error_string(status), ##__VA_ARGS__);	\
-		return status;	\
+		/* Bug fixed: cache status first in case it's an expression. */	\
+		int __pp_sample_error_return_status = status;	\
+		ERR_OUTPUT("%s" fmt "\n", pp_sample_get_error_string(__pp_sample_error_return_status), ##__VA_ARGS__);	\
+		return __pp_sample_error_return_status;	\
 	} while(0)
 
 #define pp_sample_return(status)	\
 	do {	\
-		if (status != PP_SAMPLE_FUNCTION_NORMAL) {	\
-			pp_sample_error_return(status, "");	\
+		/* Bug fixed: have to cache status since it could be an expression */	\
+		int __pp_sample_return_status = status;	\
+		if (__pp_sample_return_status != PP_SAMPLE_FUNCTION_NORMAL) {	\
+			pp_sample_error_return(__pp_sample_return_status, "");	\
 		}	\
 		else {	\
-			pp_sample_normal_return(status);	\
+			pp_sample_normal_return(__pp_sample_return_status);	\
 		}	\
 	} while(0)
 
