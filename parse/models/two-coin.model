@@ -1,0 +1,5 @@
+model two_coin() {
+	c1 ~ flip(0.5)
+	c2 ~ flip(0.5)
+	h = c1 + c2
+}

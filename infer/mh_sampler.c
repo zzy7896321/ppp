@@ -107,13 +107,13 @@ int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
 	}
 	mh_sampler->model = model;
 
-	mh_sampling_trace_t* trace = 0;
 	unsigned round_ = 0;
 	unsigned max_initial_round = g_mh_sampler_maximum_initial_round;
-	while (round_ < max_initial_round) {
+	/* get initial trace */
+	{
 		
 		/* initialize trace */
-		trace = new_mh_sampling_trace();
+		mh_sampling_trace_t* trace = new_mh_sampling_trace();
 
 		/* set up parameters */
 		ModelParamsNode* param_node = model->params;
@@ -139,21 +139,56 @@ int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
 			stmts = stmts->stmts;
 		}
 
+		mh_sampler->current_trace = trace;
+	}
+
+	++round_;
+	{
 		/* check conditions */
-		int acc_result = pp_query_acceptor((pp_trace_t*) trace, mh_sampler->query);
+		int acc_result = pp_query_acceptor((pp_trace_t*) mh_sampler->current_trace, mh_sampler->query);
 		if ( acc_result == 1){
-			mh_sampler->current_trace = trace;
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 		else if (acc_result == 0) {
-			mh_sampling_trace_destroy(trace);
+			/* do nothing */
 		}
 		else {
-			mh_sampling_trace_destroy(trace);
+			mh_sampling_trace_destroy(mh_sampler->current_trace);
+			mh_sampler->current_trace = 0;
 			pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 		}
 	}
 
+	/* temporarily disable the mh_sampler's query object */
+	pp_query_t* query = mh_sampler->query;
+	mh_sampler->query = 0;
+
+	/* run the following rounds with unconditional mh updates */
+	for (; round_ < max_initial_round; ++round_) {
+		int status = mh_sampler_step(mh_sampler);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			mh_sampler->query = query;
+			pp_sample_error_return(status, "");
+		}
+
+
+		int acc_result = pp_query_acceptor((pp_trace_t*) mh_sampler->current_trace, query);
+		if ( acc_result == 1){
+			mh_sampler->query = query;
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+		else if (acc_result == 0) {
+			/* do nothing */
+		}
+		else {
+			mh_sampling_trace_destroy(mh_sampler->current_trace);
+			mh_sampler->current_trace = 0;
+			mh_sampler->query = query;
+			pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
+		}
+	}
+
+	mh_sampler->query = query;
 	pp_sample_error_return(PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE, ": maximum initial round %d is reached", max_initial_round);
 }
 
