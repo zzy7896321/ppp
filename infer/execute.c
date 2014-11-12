@@ -715,7 +715,19 @@ int execute_draw_stmt(DrawStmtNode* stmt, pp_trace_t* trace) {
 		break;
 	case ERP_BETA:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, a, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, b, float);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float sample = beta(a, b);
+			float logprob = beta_logprob(sample, a, b);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = new_pp_float(sample);
+			trace->logprob += logprob;
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_BINOMIAL:
 		{

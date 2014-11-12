@@ -571,7 +571,20 @@ int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_samplin
 		break;
 	case ERP_BETA:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, a, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, b, float);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float sample = beta(a, b);
+			float logprob = beta_logprob(sample, a, b);
+			if (*result_ptr) {
+				pp_variable_destroy(*result_ptr);
+			}
+			*result_ptr = new_pp_float(sample);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(a), new_pp_float(b));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_BINOMIAL:
 		{
@@ -707,7 +720,16 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 		break;
 	case ERP_BETA:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			EXECUTE_DRAW_STMT_GET_PARAM(2);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, a, float);
+			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, b, float);
+			EXECUTE_DRAW_STMT_CLEAR(2);
+
+			float sample = PP_VARIABLE_FLOAT_VALUE(*result_ptr);
+			float logprob = beta_logprob(sample, a, b);
+			trace->logprob += logprob;
+			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(a), new_pp_float(b));
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_BINOMIAL:
 		{
@@ -845,7 +867,16 @@ int mh_sampling_random_walk(DrawStmtNode* node, mh_sampling_sample_t* sample, mh
     	}
     	break;
     case ERP_BETA:
-    	break;
+    	{
+    		mh_sampling_sample_t* result = mh_sampling_sample_clone(sample);
+    		float old_value = PP_VARIABLE_FLOAT_VALUE(sample->value);
+    		float new_value = uniform(old_value - 1, old_value + 1);
+    		*F = *R = 0.5;
+    		result->value = new_pp_float(new_value);
+    		result->logprob = beta_logprob(new_value, PP_VARIABLE_FLOAT_VALUE(sample->param[0]), PP_VARIABLE_FLOAT_VALUE(sample->param[1]));
+    		*result_ptr = result;
+    		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
     case ERP_BINOMIAL:
     	break;
     case ERP_POISSON:

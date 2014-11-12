@@ -1,0 +1,8 @@
+model biased_coin(a, b) {
+	
+	bias ~ beta(a, b)
+	for i = 0 to 4 {
+		x[i] ~ flip(bias)
+	}
+}
+
