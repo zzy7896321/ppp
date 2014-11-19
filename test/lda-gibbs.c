@@ -15,7 +15,7 @@
 int num_topic,num_docs,vocab_size;
 int *num_words;
 int **docs;
-float *alpha,*beta;
+float *prior_alpha,*prior_beta;
 
 /* use pointers to structs because the client doesn't need to know the struct sizes */
 struct pp_state_t* state;
@@ -44,12 +44,12 @@ int main() {
 	docs[0][1]=0;
 	docs[1][0]=1;
 	docs[1][1]=1;
-	alpha=malloc(sizeof(float) * num_words[num_topic]);
-	alpha[0]=1;
-	alpha[1]=1;
-	beta=malloc(sizeof(float) * num_words[num_topic]);
-	beta[0]=1;
-	beta[1]=1;
+	prior_alpha=malloc(sizeof(float) * num_words[num_topic]);
+	prior_alpha[0]=1;
+	prior_alpha[1]=1;
+	prior_beta=malloc(sizeof(float) * num_words[num_topic]);
+	prior_beta[0]=1;
+	prior_beta[1]=1;
 
 
 	state = pp_new_state();
@@ -167,7 +167,7 @@ void lda_gibbs_conditional_probability(char* name,int index){
 	}
 	for(ii=0;ii<num_docs;ii=ii+1){
 		for(jj=0;jj<num_words[ii];jj=jj+1){
-			int tmp_topic=pp_variable_to_int(pp_array_at(pp_array_at(pp_look_up(instance,"topic"),ii),jj));
+			int tmp_topic=pp_variable_to_int(pp_array_at(pp_array_at(pp_look_up(instance, "topic"),ii),jj));
 			word_num_of_topic[tmp_topic]=word_num_of_topic[tmp_topic]+1;
 			word_id_of_topic[tmp_topic][docs[ii][jj]]=word_id_of_topic[tmp_topic][docs[ii][jj]]+1;
 		}
@@ -177,13 +177,13 @@ void lda_gibbs_conditional_probability(char* name,int index){
 		word_num_of_topic[k]=word_num_of_topic[k]-1;
 		word_id_of_topic[k][t]=word_id_of_topic[k][t]-1;
 		/* calc prob */
-		cal1=word_num_of_topic[k]+alpha[k];
-		cal2=num_topic*alpha[k];
+		cal1=word_num_of_topic[k]+prior_alpha[k];
+		cal2=num_topic*prior_alpha[k];
 		for(ii=0;ii<num_topic;ii=ii+1){
 			cal2=cal2+word_num_of_topic[k];
 		}
-		cal3=word_id_of_topic[k][t]+beta[t];
-		cal4=vocab_size*beta[t];
+		cal3=word_id_of_topic[k][t]+prior_beta[t];
+		cal4=vocab_size*prior_beta[t];
 		for(ii=0;ii<vocab_size;ii=ii+1){
 			cal4=cal4+word_id_of_topic[k][t];
 		}

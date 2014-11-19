@@ -24,7 +24,7 @@ void gibbs_clear_conditional_probability(){
 }
 void gibbs_add_conditional_probability(float val, float prob){
 	struct val_prob_t *tmp;
-	tmp=calloc(sizeof(struct val_prob_t));
+	tmp=calloc(1,sizeof(struct val_prob_t));
 	tmp->val=val;
 	tmp->prob=prob;
 	tmp->next=tmp_conditional_probability;
