@@ -43,7 +43,7 @@ int pp_variable_vector_increase_capacity(pp_vector_t* vector, int size_to_fit);
 
 pp_variable_t* pp_variable_clone(pp_variable_t* variable);
 
-int pp_variable_dump(pp_variable_t* variable, char* buffer, int buf_size);
+int pp_variable_dump(char* buffer, int buf_size, pp_variable_t* variable);
 
 int pp_variable_to_int(pp_variable_t* variable);
 float pp_variable_to_float(pp_variable_t* variable);

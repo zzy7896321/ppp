@@ -402,9 +402,10 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 			case NAME_VAR:
 				{
 					NameVarNode* name_var = (NameVarNode*) variable;
-					const char* name = symbol_to_string(node_symbol_table(name_var), name_var->name);
-					pp_variable_t* var = pp_trace_find_variable(trace, name);
+					pp_variable_t* var = pp_trace_find_variable_s(trace, name_var->name);
 					if (!var) {
+						const char* name = symbol_table_get_name(node_symbol_table(name_var), name_var->name);
+						if (!name) name = "(null)";
 						pp_sample_error_return(PP_SAMPLE_FUNCTION_VARIABLE_NOT_FOUND, ": %s", name);
 					}
 
@@ -418,15 +419,19 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 			case INDEX_VAR:
 				{
 					IndexVarNode* index_var = (IndexVarNode*) variable;
-					const char* name = symbol_to_string(node_symbol_table(index_var), index_var->name);
-					pp_variable_t* var = pp_trace_find_variable(trace, name);
+					pp_variable_t* var = pp_trace_find_variable_s(trace, index_var->name);
 					if (!var) {
+						const char* name = symbol_table_get_name(node_symbol_table(index_var), index_var->name);
+						if (!name) name = "(null)";
 						pp_sample_error_return(PP_SAMPLE_FUNCTION_VARIABLE_NOT_FOUND, ": %s", name);
 					}
 
 					ExprSeqNode* expr_seq = index_var->expr_seq;
 					while (expr_seq) {
 						if (!var || var->type != PP_VARIABLE_VECTOR) {
+							/* FIXME wrong name */
+							const char* name = symbol_table_get_name(node_symbol_table(index_var), index_var->name);
+							if (!name) name = "(null)";
 							pp_sample_error_return(PP_SAMPLE_FUNCTION_SUBSCRIPTING_TO_NON_VECTOR, "%s", name);
 						}
 						ExprNode* expr = expr_seq->expr;
@@ -443,6 +448,8 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 						int index = PP_VARIABLE_INT_VALUE(sub);
 						pp_variable_destroy(sub);
 						if (index < 0 || index >= PP_VARIABLE_VECTOR_LENGTH(var)) {
+							const char* name = symbol_table_get_name(node_symbol_table(index_var), index_var->name);
+							if (!name) name = "(null)";
 							pp_sample_error_return(PP_SAMPLE_FUNCTION_INDEX_OUT_OF_BOUND,
 									": %s, index = %d, length = %d", name, index, PP_VARIABLE_VECTOR_LENGTH(var));
 						}
@@ -555,16 +562,19 @@ int get_parameters(ExprSeqNode* expr_seq, pp_trace_t* trace, size_t num_expected
 int get_variable_ptr(VariableNode* variable, pp_trace_t* trace, pp_variable_t*** result_ptr) {
 
 	switch (variable->type) {
-	case NAME_VAR:
-		*result_ptr = &(pp_trace_get_variable(trace, symbol_to_string(node_symbol_table(variable), ((NameVarNode*) variable)->name)));
+	case NAME_VAR: 
+		{
+			NameVarNode* name_var = (NameVarNode*) variable;
+			*result_ptr = pp_trace_get_variable_ptr_s(trace, name_var->name);
+		}
 		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 	case FIELD_VAR:
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
 		//break;
 	case INDEX_VAR:
 		{
-			const char* name = symbol_to_string(node_symbol_table(variable), ((IndexVarNode*) variable)->name);
-			pp_variable_t** vec_ptr = &pp_trace_get_variable(trace, name);
+			IndexVarNode* index_var = (IndexVarNode*) variable;
+			pp_variable_t** vec_ptr = pp_trace_get_variable_ptr_s(trace, index_var->name);
 			pp_variable_t* vec = *vec_ptr;
 
 			ExprSeqNode* expr_seq = ((IndexVarNode*) variable)->expr_seq;
@@ -577,6 +587,8 @@ int get_variable_ptr(VariableNode* variable, pp_trace_t* trace, pp_variable_t***
 					*vec_ptr = vec;
 				}
 				else if (vec->type != PP_VARIABLE_VECTOR) {
+					const char* name = symbol_table_get_name(node_symbol_table(index_var), index_var->name);
+					if (!name) name = "(null)";
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_SUBSCRIPTING_TO_NON_VECTOR, ": %s", name);
 				}
 
@@ -592,6 +604,8 @@ int get_variable_ptr(VariableNode* variable, pp_trace_t* trace, pp_variable_t***
 				int index = PP_VARIABLE_INT_VALUE(sub);
 				pp_variable_destroy(sub);
 				if (index < 0) {
+					const char* name = symbol_table_get_name(node_symbol_table(index_var), index_var->name);
+					if (!name) name = "(null)";
 					pp_sample_error_return(PP_SAMPLE_FUNCTION_INDEX_OUT_OF_BOUND,
 							": %s, index %d, length %d", name, index, PP_VARIABLE_VECTOR_LENGTH(vec));
 				}
@@ -793,7 +807,7 @@ int execute_let_stmt(LetStmtNode* stmt, pp_trace_t* trace) {
 }
 
 int execute_for_stmt(ForStmtNode* stmt, pp_trace_t* trace) {
-	pp_variable_t** loop_var_ptr = &(pp_trace_get_variable(trace, symbol_to_string(node_symbol_table(stmt), stmt->name)));
+	pp_variable_t** loop_var_ptr = pp_trace_get_variable_ptr_s(trace, stmt->name);
 
 	pp_variable_t* loop_var = 0;
 	int status = execute_expr(stmt->start_expr, trace, &loop_var);

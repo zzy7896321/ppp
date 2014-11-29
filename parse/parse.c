@@ -1,6 +1,7 @@
 #include "../ppp.h"
 #include "../defs.h"
 #include "../debug.h"
+#include "../config.h"
 #include "parse.h"
 #include "interface.h"
 #include <assert.h>
@@ -13,6 +14,8 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
+
+#define MAX_NAME_SIZE 256
 
 #define DUMP_BUFFER_SIZE 8096
 static char dump_buffer[DUMP_BUFFER_SIZE];
@@ -102,16 +105,6 @@ static void* failure(const char* message)
     return 0;
 }
 
-const char* symbol_to_string(struct symbol_table_t* symbol_table, symbol_t symbol)
-{
-    struct symbol_table_entry_t* table_entry;
-    table_entry = symbol_table_find_entry_by_symbol(symbol_table, symbol);
-    if (table_entry)
-        return table_entry->string;
-    else
-        return 0;
-}
-
 const char* dump_name(symbol_t name, struct symbol_table_t* symbol_table) {
     dump_name_impl(dump_buffer, DUMP_BUFFER_SIZE, name, symbol_table);
     return dump_buffer;
@@ -138,7 +131,7 @@ symbol_t parse_name(struct ParserState* ps)
     char characters[MAX_NAME_SIZE];
 
     skip_spaces(ps);
-    if (!is_name_first_character(peek(ps))) return 0;
+    if (!is_name_first_character(peek(ps))) return SYMBOL_NULL;
 
     length = 0;
     while (is_name_character(peek(ps))) {
@@ -147,7 +140,7 @@ symbol_t parse_name(struct ParserState* ps)
     }
     characters[length] = '\0';
 
-    return symbol_table_lookup_symbol(ps->symbol_table, characters);
+    return symbol_table_insert(ps->symbol_table, characters);
 }
 
 const char* dump_models(struct ModelsNode* models) {
@@ -213,7 +206,7 @@ struct ModelNode* parse_model(struct ParserState* ps)
 
     if (!accept(ps, "model")) return failure("parse_model: model expected");
     name = parse_name(ps);
-    if (!name) return failure("parse_model: name expected");
+    if (name == SYMBOL_NULL) return failure("parse_model: name expected");
     debug("%s\n", "parse_model: name recognized");
     if (!accept(ps, "(")) return failure("parse_model: ( expected");
     debug("%s\n", "parse_model: ( recognized");
@@ -268,7 +261,7 @@ struct ModelParamsNode* parse_model_params(struct ParserState* ps)
     struct ModelParamsNode* model_params;
 
     name = parse_name(ps);
-    if (!name) return failure("parse_model_params: name expected");
+    if (name == SYMBOL_NULL) return failure("parse_model_params: name expected");
     if (accept(ps, ",")) {
         model_params1 = parse_model_params(ps);
         if (!model_params1) return failure("parse_model_params: model_params expected");
@@ -525,7 +518,7 @@ struct StmtNode* parse_stmt(struct ParserState* ps)
 
     if (accept(ps, "~")) {
         dist = parse_name(ps);
-        if (!dist) return failure("parse_stmt: dist expected");
+        if (dist == SYMBOL_NULL) return failure("parse_stmt: dist expected");
         if (!accept(ps, "(")) return failure("parse_stmt: ( expected");
         expr_seq = parse_expr_seq(ps);
         if (!expr_seq) return failure("parse_stmt: expr_seq expected");
@@ -591,7 +584,7 @@ struct ForStmtNode* parse_for_stmt(struct ParserState* ps)
     if (!accept(ps, "for")) return failure("parse_for_stmt: for expected");
     debug("%s\n", "parse_for_stmt: for recognized");
     name = parse_name(ps);
-    if (!name) return failure("parse_for_stmt: name expected");
+    if (name == SYMBOL_NULL) return failure("parse_for_stmt: name expected");
     debug("%s\n", "parse_for_stmt: name recognized");
     if (!accept(ps, "=")) return failure("parse_for_stmt: = expected");
     debug("%s\n", "parse_for_stmt: = recognized");
@@ -810,7 +803,7 @@ struct ExprNode* parse_expr(struct ParserState* ps)
 
     if (accept(ps, "new")) {
         name = parse_name(ps);
-        if (!name) return failure("parse_expr: name expected");
+        if (name == SYMBOL_NULL) return failure("parse_expr: name expected");
         if (!accept(ps, "(")) return failure("parse_expr: ( expected");
         if (!accept(ps, ")")) return failure("parse_expr: ) expected");
 
@@ -1025,7 +1018,7 @@ struct PrimaryExprNode* parse_primary(struct ParserState* ps)
     }
 
     name = parse_name(ps);
-    if (!name) return failure("parse_primary: name expected");
+    if (name == SYMBOL_NULL) return failure("parse_primary: name expected");
 
     if (accept(ps, "(")) {
         expr_seq = parse_expr_seq(ps);
@@ -1117,7 +1110,7 @@ struct VariableNode* parse_variable(struct ParserState* ps)
     symbol_t name;
 
     name = parse_name(ps);
-    if (!name) return failure("parse_variable: name expected");
+    if (name == SYMBOL_NULL) return failure("parse_variable: name expected");
     return parse_variable1(ps, name);
 }
 
@@ -1131,7 +1124,7 @@ struct VariableNode* parse_variable1(struct ParserState* ps, symbol_t name)
 
     if (accept(ps, ".")) {
         field_name = parse_name(ps);
-        if (!field_name) return failure("parse_variable1: field_name expected");
+        if (field_name == SYMBOL_NULL) return failure("parse_variable1: field_name expected");
 
         field_var = new_node(sizeof(struct FieldVarNode), ps);
         field_var->super.type = FIELD_VAR;

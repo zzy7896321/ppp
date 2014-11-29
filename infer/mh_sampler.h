@@ -62,18 +62,13 @@ const mh_sampling_name_t mh_sampling_get_name(void* node, loop_index_stack_t* lo
 
 void* mh_sampling_name_to_node(const char* name);
 
-//void* mh_sampling_destroy_name(mh_sampling_name_t* name);
+//void mh_sampling_destroy_name(mh_sampling_name_t* name);
 #define mh_sampling_destroy_name(name) free(name)
 
 
 //DECLARE_HASH_TABLE(mh_sampling_erp, char*, mh_sampling_sample_t*);
-#define HASH_TABLE_PREFIX mh_sampling_erp_hash_table
-#define HASH_TABLE_KEY_TYPE char*
-#define HASH_TABLE_VALUE_TYPE mh_sampling_sample_t*
-#define HASH_TABLE_DECLARE_ONLY 1
-#define HASH_TABLE_DECLARE_DUMP 1
-#define HASH_TABLE_DEFINE_STRUCT 1
-#include "../common/hash_table.h"
+typedef struct mh_sampling_erp_hash_table_t mh_sampling_erp_hash_table_t;
+typedef struct mh_sampling_erp_hash_table_node_t mh_sampling_erp_hash_table_node_t;
 
 struct mh_sampling_trace_t {
 	pp_trace_t super;
@@ -81,7 +76,7 @@ struct mh_sampling_trace_t {
 	mh_sampling_erp_hash_table_t* erp_hash_table;
 };
 
-mh_sampling_trace_t* new_mh_sampling_trace();
+mh_sampling_trace_t* new_mh_sampling_trace(symbol_table_t* symbol_table);
 
 mh_sampling_erp_hash_table_node_t* mh_sampling_trace_randomly_pick_one_erp(mh_sampling_trace_t* trace);
 

@@ -19,14 +19,13 @@ int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_vari
 	pp_trace_t* trace = 0;
 	while (1) {
 		/* initialize trace */
-		trace = new_pp_trace();
+		trace = new_pp_trace(state->symbol_table);
 
 		/* set up parameters */
 		pp_variable_t** realparam = param;
 		ModelParamsNode* param_node = model->params;
 		while (param_node) {
-			const char* varname = symbol_to_string(node_symbol_table(param_node), param_node->name);
-			pp_trace_set_variable(trace, varname, *(realparam++));
+			pp_trace_set_variable_s(trace, param_node->name, *(realparam++));
 			param_node = param_node->model_params;
 		}
 

@@ -70,11 +70,13 @@ struct ModelNode* model_map_find(struct model_map_t* model_map,
 {
     struct symbol_table_entry_t* table_entry;
 
-    table_entry = symbol_table_find_entry_by_string(symbol_table, model_name);
-    if (!table_entry) return 0;
+    symbol_t model_symbol = symbol_table_lookup(symbol_table, model_name);
+    if (model_symbol == SYMBOL_NULL) {
+    	return 0;
+    }
 
     while (model_map)
-        if (model_map->model_name == table_entry->symbol)
+        if (model_map->model_name == model_symbol)
             return model_map->model;
         else
             model_map = model_map->next;

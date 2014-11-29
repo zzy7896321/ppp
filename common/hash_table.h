@@ -43,14 +43,14 @@
  * If it is not set, assignment(=) is used.
  *
  * HASH_TABLE_VALUE_CLONE(var, value): the clone function of values.
- * If it is not set, assigment(=) is used.
+ * If it is not set, assignment(=) is used.
  *
  * HASH_TABLE_KEY_COMPARATOR(key1, key2): the comaprator of keys, returns non-zero when the keys are equal.
  * If not set, == is used.
  *
- * HASH_TABLE_KEY_DESTRUCTOR: the destructor of keys
+ * HASH_TABLE_KEY_DESTRUCTOR(key): the destructor of keys
  *
- * HASH_TABLE_VALUE_DESTRUCTOR: the destructor of values
+ * HASH_TABLE_VALUE_DESTRUCTOR(value): the destructor of values
  *
  */
 
@@ -571,3 +571,42 @@ HASH_TABLE_VALUE_TYPE, must be defined before include hash_table.h"
 #endif
 /*defined(HASH_TABLE_PREFIX) && defined(HASH_TABLE_KEY_TYPE)
 && defined(HASH_TABLE_VALUE_TYPE) && defined(HASH_TABLE_HASH_FUNCTION) */
+
+#ifndef __HASH_TABLE_FOR_EACH_HEADER
+
+#define __HASH_TABLE_FOR_EACH_HEADER(prefix, hash_table, __htab_node)	\
+	for (	CONCAT(prefix, _node_t) **__htab_slot = hash_table->entries,	\
+									**__htab_end_of_slot = hash_table->entries + hash_table->capacity,	\
+									*__htab_node = 0;	\
+			(__htab_slot != __htab_end_of_slot || __htab_node);	\
+			(__htab_node) ? (__htab_node = __htab_node->next) : (__htab_node = *__htab_slot++) )
+
+#define HASH_TABLE_FOR_EACH(prefix, hash_table, key_type, key, value_type, value, body)	\
+	__HASH_TABLE_FOR_EACH_HEADER(prefix, hash_table, __htab_node)	{	\
+		if (!__htab_node) continue;	\
+		key_type key = __htab_node->key;	\
+		value_type value = __htab_node->value;	\
+		{	\
+			body	\
+		}	\
+	}
+
+#define HASH_TABLE_FOR_EACH_PTR(prefix, hash_table, key_type, key, value_type, value, body)	\
+	__HASH_TABLE_FOR_EACH_HEADER(prefix, hash_table, __htab_node)	{	\
+		if (!__htab_node) continue;	\
+		key_type key = __htab_node->key;	\
+		value_type* value = &(__htab_node->value);	\
+		{	\
+			body	\
+		}	\
+	}
+
+#define HASH_TABLE_FOR_EACH_NODE(prefix, hash_table, node, body) \
+	__HASH_TABLE_FOR_EACH_HEADER(prefix, hash_table, node)	{	\
+		if (!node) continue;	\
+		{	\
+			body	\
+		}	\
+	}
+
+#endif

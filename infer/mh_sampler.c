@@ -10,6 +10,7 @@
 #include "mh_sampler.h"
 #include "infer.h"
 #include "../debug.h"
+#include "../config.h"
 #include "rejection.h"
 #include "execute.h"
 
@@ -24,6 +25,34 @@ unsigned g_mh_sampler_maximum_initial_round = 200;
 DEFINE_STACK(loop_index, unsigned)
 #undef STACK_DEFAULT_VALUE
 #undef STACK_DESTROY_VALUE
+
+static PPP_INLINE unsigned bkdr_hash(const char* str) {
+	unsigned hash = 0;
+	for ( ; *str != '\0'; ++str) {
+		hash = (hash * 131 + *str);
+	}
+	return hash;
+}
+#define HASH_TABLE_PREFIX mh_sampling_erp_hash_table
+#define HASH_TABLE_KEY_TYPE char*
+#define HASH_TABLE_VALUE_TYPE mh_sampling_sample_t*
+#define HASH_TABLE_DEFINE_STRUCT 1
+#define HASH_TABLE_VALUE_DEFAULT_VALUE 0
+#define HASH_TABLE_HASH_FUNCTION(key) (bkdr_hash(key))
+#define HASH_TABLE_KEY_COMPARATOR(key1, key2) (!strcmp(key1, key2))
+#define HASH_TABLE_KEY_CLONE(var, key) var = strdup(key)
+#define HASH_TABLE_VALUE_CLONE(var, value) var = mh_sampling_sample_clone(value)
+#define HASH_TABLE_KEY_DESTRUCTOR(key) free(key)
+#define HASH_TABLE_VALUE_DESTRUCTOR(value) mh_sampling_sample_destroy(value)
+#define HASH_TABLE_KEY_DUMP(buffer, buf_size, key) \
+	dump_draw_stmt_impl(buffer, buf_size, (DrawStmtNode*) mh_sampling_name_to_node(key))
+#define HASH_TABLE_VALUE_DUMP(buffer, buf_size, val)	\
+	pp_variable_dump(buffer, buf_size, (val)->value)
+#ifdef ENABLE_MEM_PROFILE
+#define HASH_TABLE_ALLOC(type, count) PROFILE_MEM_ALLOC(type, count)
+#define HASH_TABLE_DEALLOC(type, ptr, count) PROFILE_MEM_FREE(type, ptr, count)
+#endif
+#include "../common/hash_table.h"
 
 int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query, void** internal_data_ptr, pp_trace_t** trace_ptr) {
 
@@ -113,14 +142,13 @@ int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
 	{
 		
 		/* initialize trace */
-		mh_sampling_trace_t* trace = new_mh_sampling_trace();
+		mh_sampling_trace_t* trace = new_mh_sampling_trace(node_symbol_table(model));
 
 		/* set up parameters */
 		ModelParamsNode* param_node = model->params;
 		pp_variable_t** param = mh_sampler->param;
 		while (param_node) {
-			const char* varname = symbol_to_string(node_symbol_table(param_node), param_node->name);
-			pp_trace_set_variable((pp_trace_t*) trace, varname, *(param++));
+			pp_trace_set_variable_s((pp_trace_t*) trace, param_node->name, *(param++));
 			param_node = param_node->model_params;
 		}
 
@@ -218,7 +246,7 @@ int mh_sampler_execute_draw_stmt(mh_sampler_t* sampler, DrawStmtNode* stmt, pp_t
 			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 				pp_sample_error_return(status, "");
 			}
-			/* rescoring has been doen in mh_sampling_reuse_old_sample */
+			/* rescoring has been done in mh_sampling_reuse_old_sample */
 			sampler->ll_stale -= old_erp_node->value->logprob;
 		}
 
@@ -243,7 +271,7 @@ int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_
 	assert(p_trace->struct_size == sizeof(mh_sampling_trace_t));
 	mh_sampling_trace_t* trace = (mh_sampling_trace_t*) p_trace;
 
-	pp_variable_t** loop_var_ptr = &(pp_trace_get_variable(trace, symbol_to_string(node_symbol_table(stmt), stmt->name)));
+	pp_variable_t** loop_var_ptr = pp_trace_get_variable_ptr_s((pp_trace_t*) trace, stmt->name);
 
 	pp_variable_t* loop_var = 0;
 	int status = execute_expr(stmt->start_expr, (pp_trace_t*) trace, &loop_var);
@@ -333,15 +361,14 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 	pp_query_t* query = mh_sampler->query;
 
 	/* initialize new trace */
-	mh_sampling_trace_t* new_trace = new_mh_sampling_trace();
+	mh_sampling_trace_t* new_trace = new_mh_sampling_trace(((pp_trace_t*) mh_sampler->current_trace)->symbol_table);
 	mh_sampler->ll_stale = ((pp_trace_t*) mh_sampler->current_trace)->logprob - old_sample->logprob + new_sample->logprob;
 	mh_sampler->ll_fresh = 0.0;
 
 	/* set up parameters */
 	ModelParamsNode* param_node = model->params;
 	while (param_node) {
-		const char* varname = symbol_to_string(node_symbol_table(param_node), param_node->name);
-		pp_trace_set_variable((pp_trace_t*) new_trace, varname, *(param++));
+		pp_trace_set_variable_s((pp_trace_t*) new_trace, param_node->name, *(param++));
 		param_node = param_node->model_params;
 	}
 
@@ -377,8 +404,8 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 	}
 
 	float acceptance_rate = ((pp_trace_t*) new_trace)->logprob - ((pp_trace_t*) mh_sampler->current_trace)->logprob
-							+ R - F + log(variable_hash_table_size(((pp_trace_t*) mh_sampler->current_trace)->variable_map))
-							- log(variable_hash_table_size(((pp_trace_t*) new_trace)->variable_map)) + mh_sampler->ll_stale
+							+ R - F + log(mh_sampling_erp_hash_table_size((mh_sampler->current_trace)->erp_hash_table))
+							- log(mh_sampling_erp_hash_table_size(new_trace->erp_hash_table)) + mh_sampler->ll_stale
 							- mh_sampler->ll_fresh;
 	float randomness = log(randomR());
 	if (randomness < acceptance_rate) {
@@ -511,7 +538,7 @@ int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_samplin
 			trace->logprob += logprob;
 			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, new_pp_float(p));
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
-		}
+	}
 	case ERP_MULTINOMIAL:
 		{
 			EXECUTE_DRAW_STMT_GET_PARAM(1);
@@ -906,55 +933,10 @@ int mh_sampling_random_walk(DrawStmtNode* node, mh_sampling_sample_t* sample, mh
 	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, ": erp %s", erp_name(node->dist_type));
 }
 
-unsigned bkdr_hash(const char* str);
-//#define HASH_TABLE_HASH_FUNCTION(key) (bkdr_hash(key))
-//#define HASH_TABLE_COMPARATOR(key1, key2) (!strcmp(key1, key2))
-//#define HASH_TABLE_DESTROY_KEY(key) free(key)
-//#define HASH_TABLE_DESTROY_VALUE(value) mh_sampling_sample_destroy(value)
-//#define HASH_TABLE_KEY_NOT_FOUND_VALUE 0
-//#define HASH_TABLE_VALUE_DEFAULT 0
-//#define HASH_TABLE_DUMP_KEY(buffer, buf_size, key) \
-//	dump_draw_stmt_impl(buffer, buf_size, (DrawStmtNode*) mh_sampling_name_to_node(key))
-//#define HASH_TABLE_DUMP_VALUE(buffer, buf_size, val) \
-//	pp_variable_dump((val)->value, buffer, buf_size)
-//#define HASH_TABLE_CLONE_KEY(key) strdup(key)
-//#define HASH_TABLE_CLONE_VALUE(value) mh_sampling_sample_clone(value)
-//DEFINE_HASH_TABLE(mh_sampling_erp, char*, mh_sampling_sample_t*)
-//#undef HASH_TABLE_HASH_FUNCTION
-//#undef HASH_TABLE_COMPARATOR
-//#undef HASH_TABLE_DESTROY_KEY
-//#undef HAHS_TABLE_DESTROY_VALUE
-//#undef HASH_TABLE_KEY_NOT_FOUND_VALUE
-//#undef HASH_TABLE_VALUE_DEFAULT
-//#undef HASH_TABLE_KEY_DUMP_FUNCTION
-//#undef HASH_TABLE_VALUE_DUMP_FUNCTION
-//#undef HASH_TABLE_CLONE_KEY
-//#undef HASH_TABLE_CLONE_VALUE
 
-#define HASH_TABLE_PREFIX mh_sampling_erp_hash_table
-#define HASH_TABLE_KEY_TYPE char*
-#define HASH_TABLE_VALUE_TYPE mh_sampling_sample_t*
-#define HASH_TABLE_DEFINE_STRUCT 0
-#define HASH_TABLE_VALUE_DEFAULT_VALUE 0
-#define HASH_TABLE_HASH_FUNCTION(key) (bkdr_hash(key))
-#define HASH_TABLE_KEY_COMPARATOR(key1, key2) (!strcmp(key1, key2))
-#define HASH_TABLE_KEY_CLONE(var, key) var = strdup(key)
-#define HASH_TABLE_VALUE_CLONE(var, value) var = mh_sampling_sample_clone(value)
-#define HASH_TABLE_KEY_DESTRUCTOR(key) free(key)
-#define HASH_TABLE_VALUE_DESTRUCTOR(value) mh_sampling_sample_destroy(value)
-#define HASH_TABLE_KEY_DUMP(buffer, buf_size, key) \
-	dump_draw_stmt_impl(buffer, buf_size, (DrawStmtNode*) mh_sampling_name_to_node(key))
-#define HASH_TABLE_VALUE_DUMP(buffer, buf_size, val)	\
-	pp_variable_dump((val)->value, buffer, buf_size)
-#ifdef ENABLE_MEM_PROFILE
-#define HASH_TABLE_ALLOC(type, count) PROFILE_MEM_ALLOC(type, count)
-#define HASH_TABLE_DEALLOC(type, ptr, count) PROFILE_MEM_FREE(type, ptr, count)
-#endif
-#include "../common/hash_table.h"
-
-mh_sampling_trace_t* new_mh_sampling_trace() {
+mh_sampling_trace_t* new_mh_sampling_trace(symbol_table_t* symbol_table) {
 	mh_sampling_trace_t* trace = malloc(sizeof(mh_sampling_trace_t));
-	pp_trace_init((pp_trace_t*) trace, sizeof(mh_sampling_trace_t));
+	__pp_trace_init((pp_trace_t*) trace, symbol_table, sizeof(mh_sampling_trace_t));
 
 	trace->erp_hash_table = new_mh_sampling_erp_hash_table(8, 0.8);
 
@@ -964,14 +946,10 @@ mh_sampling_trace_t* new_mh_sampling_trace() {
 mh_sampling_erp_hash_table_node_t* mh_sampling_trace_randomly_pick_one_erp(mh_sampling_trace_t* trace) {
 	size_t i = ((((unsigned) rand()) << 16) + ((unsigned) rand())) % mh_sampling_erp_hash_table_size(trace->erp_hash_table) + 1;
 
-	mh_sampling_erp_hash_table_node_t** data = mh_sampling_erp_hash_table_data(trace->erp_hash_table);
-	for (size_t j = 0, tar = trace->erp_hash_table->capacity + 1; j != tar; ++j) {
-		mh_sampling_erp_hash_table_node_t* node = data[j];
-		while (node) {
-			if (!--i) return node;
-			node = node->next;
-		}
-	}
+	HASH_TABLE_FOR_EACH_NODE(mh_sampling_erp_hash_table, trace->erp_hash_table, node, {
+		if (!--i) return node;
+	});
+
 	ERR_OUTPUT("WARNING: randomly pick one erp failed\n");
 	return 0;
 }

@@ -118,7 +118,7 @@ pp_variable_t* pp_variable_clone(pp_variable_t* variable) {
 	return 0;
 }
 
-int pp_variable_dump(pp_variable_t* variable, char* buffer, int buf_size) {
+int pp_variable_dump(char* buffer, int buf_size, pp_variable_t* variable) {
 	if (!buf_size) return -1;
 
 	buffer[0] = '\0';
@@ -138,7 +138,8 @@ int pp_variable_dump(pp_variable_t* variable, char* buffer, int buf_size) {
 			num_written += snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, "[");
 			size_t length = PP_VARIABLE_VECTOR_LENGTH(variable);
 			for (size_t i = 0; i != length; ++i) {
-				num_written += pp_variable_dump(PP_VARIABLE_VECTOR_VALUE(variable)[i], buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0);;
+				num_written += pp_variable_dump(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0,
+						PP_VARIABLE_VECTOR_VALUE(variable)[i]);
 				num_written += snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, " ");
 			} 
 			num_written += snprintf(buffer + num_written, (buf_size >= num_written) ? (buf_size - num_written) : 0, "]");

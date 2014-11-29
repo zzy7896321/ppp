@@ -44,7 +44,7 @@ VECTOR_VALUE_CLONE(var, value): the clone function of the type
 VECTOR_VALUE_DESTRUCTOR(var): the destructor of the type
 	no cleanup is performed when destroying the vector if VECTOR_VALUE_DESTRUCTOR is not provided
 
-VECTOR_VALUE_DUMP: the dump function of the value type
+VECTOR_VALUE_DUMP(buffer, buf_size, value): the dump function of the value type
 	implies VECTOR_DECLARE_DUMP
 */
 
