@@ -3,31 +3,33 @@
 
 #include "../common/variables.h"
 #include "../common/trace.h"
-#include "../common/ilist.h"
+#include "../common/symbol_table.h"
 
-typedef enum pp_query_compare_t {
-		PP_QUERY_EQ, 
-		PP_QUERY_NE, 
-		PP_QUERY_LT, 
-		PP_QUERY_GT, 
-		PP_QUERY_GE, 
-		PP_QUERY_LE} pp_query_compare_t;
-extern const char* pp_query_compare_string[]; 
+#include "../config.h"
 
-typedef struct pp_query_t {
-	char* varname;
-	ilist_entry_t* index;
-	pp_query_compare_t compare;
-	pp_variable_t* threshold;
-	struct pp_query_t* next;	
-} pp_query_t;
+typedef struct pp_query_t pp_query_t;
 
-pp_query_t* new_pp_query(const char* varname, ilist_entry_t* index,
-		pp_query_compare_t compare, pp_variable_t* threshold, pp_query_t* next);
-int pp_query_dump(pp_query_t* query, char* buffer, int buf_size);
-void pp_query_destroy(pp_query_t* query);
+typedef pp_variable_t* (*pp_observed_name_to_value_t)(pp_query_t* query, const char* varname);
 
-pp_query_t* pp_compile_query(const char* query_string);
-int pp_query_acceptor(pp_trace_t* trace, pp_query_t* query);
+typedef int (*pp_query_acceptor_t)(pp_query_t* query, pp_trace_t* trace);
 
-#endif
+struct pp_query_t {
+	pp_observed_name_to_value_t observe;
+	pp_query_acceptor_t accept;
+	pp_query_acceptor_t full_accept;
+};
+
+enum pp_query_accept_result {
+	PP_QUERY_ERROR = -1,
+	PP_QUERY_REJECTED = 0,
+	PP_QUERY_ACCEPTED = 1,
+};
+
+int pp_query_always_accept(pp_query_t* query, pp_trace_t* trace);
+
+pp_variable_t* pp_query_observe_nothing(pp_query_t* query, const char* varname);
+
+pp_query_t* pp_query_no_condition();
+
+#endif /* QUERY_H */
+

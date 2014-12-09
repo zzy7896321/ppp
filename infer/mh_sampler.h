@@ -24,7 +24,9 @@ typedef struct mh_sampling_sample_t {
 
 mh_sampling_sample_t* new_mh_sampling_sample(pp_variable_t* value, float logprob, size_t num_param, ...);
 int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampling_sample_t** sample_ptr);
-int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampling_sample_t* old_sample, mh_sampling_sample_t** sample_ptr);
+int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, mh_sampling_trace_t* m_trace, mh_sampling_sample_t* old_sample, mh_sampling_sample_t** sample_ptr);
+int mh_sampling_use_observed_value(DrawStmtNode* stmt, mh_sampling_trace_t* m_trace, pp_variable_t* variable);
+int mh_sampling_rescore(DrawStmtNode* stmt, mh_sampling_trace_t* m_trace, pp_variable_t* variable, mh_sampling_sample_t** sample_ptr);
 int mh_sampling_sample_has_same_param(mh_sampling_sample_t* lhs, mh_sampling_sample_t* rhs);
 mh_sampling_sample_t* mh_sampling_sample_clone(mh_sampling_sample_t* sample);
 void mh_sampling_sample_destroy(mh_sampling_sample_t* sample);
@@ -58,6 +60,8 @@ int mh_sampler_execute_stmt(mh_sampler_t* mh_sampler, StmtNode* stmt, pp_trace_t
 int mh_sampler_step(mh_sampler_t* mh_sampler);
 void mh_sampler_destroy(mh_sampler_t* mh_sampler);
 
+int mh_sampler_observe_value(mh_sampler_t* sampler, VariableNode* variable, pp_trace_t* trace, pp_variable_t** result_ptr);
+
 const mh_sampling_name_t mh_sampling_get_name(void* node, loop_index_stack_t* loop_index);
 
 void* mh_sampling_name_to_node(const char* name);
@@ -73,6 +77,7 @@ typedef struct mh_sampling_erp_hash_table_node_t mh_sampling_erp_hash_table_node
 struct mh_sampling_trace_t {
 	pp_trace_t super;
 
+	float observed_logprob;
 	mh_sampling_erp_hash_table_t* erp_hash_table;
 };
 

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "../query/query.h"
+#include "../query/string_query.h"
 #include "../parse/parse.h"
 #include "../parse/interface.h"
 
@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 	ModelNode* model = model_map_find(state->model_map, state->symbol_table, "biased_coin");
 	printf(dump_model(model));
 
-    query = pp_compile_query("x[0] == 1 x[1] == 1 x[2] == 0 x[3] == 1 x[4] == 0");
+    query = pp_compile_string_query("x[0] == 1 x[1] == 1 x[2] == 0 x[3] == 1 x[4] == 0");
     printf("> condition compiled\n");
 
 	pp_variable_t* param[2] = {
@@ -76,11 +76,11 @@ int main(int argc, char** argv)
     traces = pp_sample(state, "biased_coin", param, query);
     printf("> traces sampled\n");
 
-    pp_query_destroy(query);
+    pp_compiled_query_destroy(query);
 
 	calc_mean_var(traces);
     
-    //query = pp_compile_query("bias == 1");
+    //query = pp_compile_string_query("bias == 1");
     //printf("> query compiled\n");
 
     //pp_get_result(traces, query, &result);  // "get_result" may not be a good name 
@@ -104,7 +104,7 @@ int main(int argc, char** argv)
 
     pp_trace_store_destroy(traces);
 
-    //pp_query_destroy(query);
+    //pp_compiled_query_destroy(query);
 	
 	pp_variable_destroy(param[0]);
 	pp_variable_destroy(param[1]);

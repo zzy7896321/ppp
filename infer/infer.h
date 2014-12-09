@@ -32,6 +32,7 @@ enum {
 
 	PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE,
 	PP_SAMPLE_FUNCTION_QUERY_ERROR,
+	PP_SAMPLE_FUNCTION_UNKNOWN_FUNCTION,
 
 	PP_SAMPLE_FUNCTION_ERROR_NUM
 };
@@ -72,26 +73,10 @@ typedef int (*sample_function_t)(
 int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query, void** internal_data_ptr, pp_trace_t** trace_ptr);
 int mh_sampling(struct pp_state_t* state, const char*  model_name, pp_variable_t* param[], pp_query_t* query, void** internal_data_ptr, pp_trace_t** trace_ptr);
 
+int pp_sample_full_accept(pp_query_t* query, pp_trace_t* trace);
+
 extern unsigned g_sample_iterations;
 extern char* g_sample_method;
 extern sample_function_t g_sample_function;
-
-/*struct pp_trace_store_t {
-	struct pp_instance_t* instance;
-    int num_iters;
-    int num_verts;
-    int num_accepts;
-    float t[1];
-};*/
-
-/*int rejection_sampling(struct pp_instance_t* instance, acceptor_t accept,
-                       name_to_value_t F, void* raw_data, 
-                       vertices_handler_t add_trace, void* add_trace_data);
-
-int trace_store_insert(struct pp_instance_t* instance, void* raw_data);
-
-float getsample(struct BNVertexDraw* vertexDraw);
-float getcomp(struct BNVertexCompute* vertexComp);
-*/
 
 #endif

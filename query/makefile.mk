@@ -1,5 +1,5 @@
 
-OBJECTS := query.o
+OBJECTS := query.o string_query.o observation.o
 OBJS += $(OBJECTS)
 
 QUERY_HEADER := $(wildcard query/*.h) $(COMMON_HEADERS)

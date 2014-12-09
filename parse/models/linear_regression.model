@@ -1,0 +1,11 @@
+model linear_regression(n, x) {
+	
+	a ~ gaussian(0, 1)
+	b ~ gaussian(5.0, 1.825741858)
+	invNoise ~ gamma(1, 1)
+	sigma = 1 / sqrt(invNoise)
+
+	for i = 0 to n-1 {
+		y[i] ~ gaussian(a * x[i] + b, sigma)
+	}
+}

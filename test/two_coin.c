@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "../query/query.h"
+#include "../query/string_query.h"
 #include "../parse/parse.h"
 #include "../parse/interface.h"
 
@@ -33,16 +33,16 @@ int main()
 	ModelNode* model = model_map_find(state->model_map, state->symbol_table, "two_coin");
 	printf(dump_model(model));
 
-    query = pp_compile_query("h == 2");
+    query = pp_compile_string_query("h == 2");
     printf("> condition compiled\n");
 
 
     traces = pp_sample(state, "two_coin", 0, query);
     printf("> traces sampled\n");
 
-    pp_query_destroy(query);
+    pp_compiled_query_destroy(query);
     
-    query = pp_compile_query("c1 == 1");
+    query = pp_compile_string_query("c1 == 1");
     printf("> query compiled\n");
 
     pp_get_result(traces, query, &result);  // "get_result" may not be a good name 
@@ -66,7 +66,7 @@ int main()
 
     pp_trace_store_destroy(traces);
 
-    pp_query_destroy(query);
+    pp_compiled_query_destroy(query);
 
 #ifdef ENABLE_MEM_PROFILE
     mem_profile_print();

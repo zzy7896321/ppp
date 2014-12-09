@@ -2,6 +2,7 @@
 #include "../debug.h"
 
 #include <assert.h>
+#include <math.h>
 
 int execute_add(pp_variable_t* left, pp_variable_t* right, pp_variable_t** result_ptr) {
 	switch (left->type) {
@@ -501,7 +502,66 @@ int execute_primary_expr(PrimaryExprNode* expr, pp_trace_t* trace, pp_variable_t
 		//break;
 	case FUNC_EXPR:
 		{
-			pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+			FuncExprNode* func_expr = (FuncExprNode*) expr;
+			const char* func_name = symbol_table_get_name(node_symbol_table(func_expr), func_expr->name);
+			
+		#define GET_PARAM(n)	\
+				pp_variable_t** param = 0;	\
+				do {	\
+					int status = get_parameters(func_expr->expr_seq, trace, n, &param);	\
+					if (status != PP_SAMPLE_FUNCTION_NORMAL) {	\
+						pp_sample_error_return(status, "");	\
+					}	\
+				} while(0)
+
+		#define CONVERT_PARAM(i, type, name, pp_type)	\
+				type name = pp_variable_to_##pp_type (param[ i ])
+
+		#define CLEAR(n)	\
+				do {	\
+					for (size_t i = 0; i < n; ++i) {	\
+						pp_variable_destroy(param[i]);	\
+					}	\
+					free(param);	\
+				} while(0)
+
+			if (!strcmp(func_name, "exp")) {
+				GET_PARAM(1);
+				CONVERT_PARAM(0, float, a, float);
+				CLEAR(1);
+
+				float value = exp(a);
+				*result_ptr = new_pp_float(value);
+			}
+
+			else if (!strcmp(func_name, "log")) {
+				GET_PARAM(1);
+				CONVERT_PARAM(0, float, a, float);
+				CLEAR(1);
+
+				float value = log(a);
+				*result_ptr = new_pp_float(value);
+			}
+
+			else if (!strcmp(func_name, "sqrt")) {
+				GET_PARAM(1);
+				CONVERT_PARAM(0, float, a, float);
+				CLEAR(1);
+
+				float value = sqrt(a);
+				*result_ptr = new_pp_float(value);
+			}
+
+			else {
+				pp_sample_error_return(PP_SAMPLE_FUNCTION_UNKNOWN_FUNCTION, ": %s", func_name);
+			}
+
+		#undef GET_PARAM
+		#undef CONVERT_PARAM
+		#undef CLEAR
+
+
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 		//break;
 	}

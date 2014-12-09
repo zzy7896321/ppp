@@ -4,11 +4,75 @@
 #include <time.h>
 
 #include "../query/string_query.h"
+#include "../query/observation.h"
 #include "../parse/parse.h"
 #include "../parse/interface.h"
 #include "../common/variables.h"
 
 #include "../common/mem_profile.h"
+
+void estimate_parameters(pp_trace_store_t* traces, float alpha, float beta, int k, int ndocs, int nwords[], int vocab_size) {
+	
+	int n = traces->n;
+
+	int* nd = (int*) calloc(ndocs * k, sizeof(int));
+	int* nw = (int*) calloc(k * vocab_size, sizeof(int));
+
+	for (int s = 0; s < n; ++s) {
+		pp_trace_t* trace = traces->trace[s];
+
+		pp_variable_t* topic = pp_trace_find_variable(trace, "topic");
+		pp_variable_t* X = pp_trace_find_variable(trace, "X");
+		
+		for (int i = 0; i < ndocs; ++i) {
+			pp_variable_t* topic_i = PP_VARIABLE_VECTOR_VALUE(topic)[i];
+			pp_variable_t* X_i = PP_VARIABLE_VECTOR_VALUE(X)[i];
+
+			for (int j = 0; j < nwords[i]; ++j) {
+				pp_variable_t* topic_i_j = PP_VARIABLE_VECTOR_VALUE(topic_i)[j];
+				pp_variable_t* X_i_j = PP_VARIABLE_VECTOR_VALUE(X_i)[j];
+				int topic_i_j_value = PP_VARIABLE_INT_VALUE(topic_i_j);
+				int X_i_j_value = PP_VARIABLE_INT_VALUE(X_i_j);
+
+				nd[i * k + topic_i_j_value]++;
+				nw[topic_i_j_value * vocab_size + X_i_j_value]++;
+			}
+		}
+	}
+
+	float* theta = (float*) calloc(ndocs * k, sizeof(float));
+	float* phi = (float*) calloc(k * vocab_size, sizeof(float));
+
+	printf("theta:\n");
+
+	for (int i = 0; i < ndocs; ++i) {
+		for (int j = 0; j < k; ++j) {
+			theta[i * k + j] = (nd[i * k + j] + alpha) / (nwords[i] * n + k * alpha);
+			printf("%f ", theta[i * k + j]);		
+		}	
+		printf("\n");
+	}
+		
+	printf("\nphi:\n");
+
+	for (int i = 0; i < k; ++i) {
+		int s = 0;
+		for (int j = 0; j < vocab_size; ++j) {
+			s += nw[i * vocab_size + j];
+		}
+
+		for (int j = 0; j < vocab_size; ++j) {
+			phi[i * vocab_size + j] = (nw[i * vocab_size + j] + beta) / (s + vocab_size * beta);
+			printf("%f ", phi[i * vocab_size + j]);
+		}
+		printf("\n");
+	}
+
+	free(theta);
+	free(phi);
+	free(nw);
+	free(nd);
+}
 
 int main()
 {
@@ -45,22 +109,16 @@ int main()
 	}
 	param[3] = new_pp_int(3);	
 
-	query = pp_compile_string_query("X[0,0]==0 X[0,1]==0 X[1,0]==1 X[1,1]==1");
+	int X[2][2] = {
+		{0, 0},
+		{1, 1},
+	};
+	query = pp_query_observe_int_array_2D(state, "X", &X[0][0], 2, 2);
 	if (!query) return 1;
-	{
-		char buffer[8096];
-		pp_string_query_dump((pp_string_query_t*) query, buffer, 8096);
-		printf("%s\n", buffer);
-	}
 
     traces = pp_sample(state, "latent_dirichlet_allocation", param, query);
     printf("> traces sampled\n");
 
-    //query = pp_compile_string_query("f== 1");
-    //printf("> query compiled\n");
-
-    //pp_get_result(traces, query, &result);  // "get_result" may not be a good name 
-    //printf("%f\n", result);
     if (!traces) {
         printf("ERROR encountered!!\n");
         return 1;
@@ -90,12 +148,17 @@ int main()
     }
     fclose(trace_dump_file);
 
+	int nwords[] = {2, 2};
+
+	/* parameter estimation */
+	estimate_parameters(traces, 1.0, 1.0, 2, 2, nwords, 3);
+
 	// pp_free is broken
     pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */
 
     pp_trace_store_destroy(traces);
 
-    pp_compiled_query_destroy(query);
+    free_pp_query_observation(query);
 
     for (int i = 0; i < 4; ++i)
         pp_variable_destroy(param[i]);

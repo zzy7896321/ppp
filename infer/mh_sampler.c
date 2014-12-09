@@ -80,13 +80,17 @@ int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t*
 		if (status != 0) {
 			pp_sample_error_return(status, "");	
 		}
+	
+		printf("\nafter init:\n");
+		static char buffer[8000];
+		pp_trace_dump(buffer, 8000, (pp_trace_t*) mh_sampler->current_trace);
+		printf("%s\n", buffer);
 
-	}
-
-	for (unsigned i = 0; i != g_mh_sampler_burn_in_iterations; ++i) {
-		int status = mh_sampler_step(mh_sampler);
-		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
-			pp_sample_error_return(status, "");
+		for (unsigned i = 0; i != g_mh_sampler_burn_in_iterations; ++i) {
+			int status = mh_sampler_step(mh_sampler);
+			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+				pp_sample_error_return(status, "");
+			}
 		}
 	}
 
@@ -173,7 +177,7 @@ int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
 	++round_;
 	{
 		/* check conditions */
-		int acc_result = pp_query_acceptor((pp_trace_t*) mh_sampler->current_trace, mh_sampler->query);
+		int acc_result = mh_sampler->query->accept(mh_sampler->query, (pp_trace_t*) mh_sampler->current_trace);
 		if ( acc_result == 1){
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
@@ -188,21 +192,21 @@ int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
 	}
 
 	/* temporarily disable the mh_sampler's query object */
-	pp_query_t* query = mh_sampler->query;
-	mh_sampler->query = 0;
+	pp_query_acceptor_t accept = mh_sampler->query->accept;
+	mh_sampler->query->accept = pp_query_always_accept;
 
 	/* run the following rounds with unconditional mh updates */
 	for (; round_ < max_initial_round; ++round_) {
 		int status = mh_sampler_step(mh_sampler);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
-			mh_sampler->query = query;
+			mh_sampler->query->accept = accept;
 			pp_sample_error_return(status, "");
 		}
 
 
-		int acc_result = pp_query_acceptor((pp_trace_t*) mh_sampler->current_trace, query);
+		int acc_result = accept(mh_sampler->query, (pp_trace_t*) mh_sampler->current_trace);
 		if ( acc_result == 1){
-			mh_sampler->query = query;
+			mh_sampler->query->accept = accept;
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 		else if (acc_result == 0) {
@@ -211,12 +215,12 @@ int mh_sampler_init_trace(mh_sampler_t* mh_sampler) {
 		else {
 			mh_sampling_trace_destroy(mh_sampler->current_trace);
 			mh_sampler->current_trace = 0;
-			mh_sampler->query = query;
+			mh_sampler->query->accept = accept;
 			pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 		}
 	}
-
-	mh_sampler->query = query;
+	
+	mh_sampler->query->accept = accept;
 	pp_sample_error_return(PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE, ": maximum initial round %d is reached", max_initial_round);
 }
 
@@ -228,6 +232,22 @@ int mh_sampler_execute_draw_stmt(mh_sampler_t* sampler, DrawStmtNode* stmt, pp_t
 	if (sampler->current_trace) {
 		const mh_sampling_name_t stmt_name = mh_sampling_get_name(stmt, sampler->loop_index);
 		mh_sampling_erp_hash_table_node_t* old_erp_node = mh_sampling_erp_hash_table_find_node(sampler->current_trace->erp_hash_table, stmt_name);
+
+		pp_variable_t* observed_value = 0;
+		int status = mh_sampler_observe_value(sampler, stmt->variable, p_trace, &observed_value);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			pp_sample_error_return(status, "");
+		}
+
+		if (observed_value) {
+			int status = mh_sampling_use_observed_value(stmt, trace, observed_value);
+			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+				pp_sample_error_return(status, "");
+			}
+
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+
 		mh_sampling_erp_hash_table_node_t* new_erp_node = mh_sampling_erp_hash_table_get_node(trace->erp_hash_table, stmt_name);
 
 		/* no previous sample found */
@@ -242,7 +262,7 @@ int mh_sampler_execute_draw_stmt(mh_sampler_t* sampler, DrawStmtNode* stmt, pp_t
 		}
 
 		else {
-			int status = mh_sampling_reuse_old_sample(stmt, p_trace, old_erp_node->value, &(new_erp_node->value));
+			int status = mh_sampling_reuse_old_sample(stmt, trace, old_erp_node->value, &(new_erp_node->value));
 			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 				pp_sample_error_return(status, "");
 			}
@@ -255,16 +275,93 @@ int mh_sampler_execute_draw_stmt(mh_sampler_t* sampler, DrawStmtNode* stmt, pp_t
 
 	/* initialization run */
 	else {
+		pp_variable_t* observed_value = 0;
+		int status = mh_sampler_observe_value(sampler, stmt->variable, p_trace, &observed_value);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL){
+			pp_sample_error_return(status, "");
+		}
+
+		if (observed_value) {
+			/* use the observed value and don't put it into the sample map */
+			int status = mh_sampling_use_observed_value(stmt, trace, observed_value);	
+			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+				pp_sample_error_return(status, "");
+			}
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+
 		const mh_sampling_name_t stmt_name = mh_sampling_get_name(stmt, sampler->loop_index);
 		mh_sampling_sample_t** sample_ptr = &(mh_sampling_erp_hash_table_get_node(trace->erp_hash_table, stmt_name)->value);
 
-		int status = mh_sampling_get_new_sample(stmt, p_trace, sample_ptr);
+		status = mh_sampling_get_new_sample(stmt, p_trace, sample_ptr);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			pp_sample_error_return(status, "");
 		}
 
 		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 	}
+}
+
+int mh_sampler_observe_value(mh_sampler_t* sampler, VariableNode* variable, pp_trace_t* trace, pp_variable_t** result_ptr) {
+	pp_query_t* query = sampler->query;
+	symbol_table_t* symbol_table = node_symbol_table(variable);
+
+	switch (variable->type) {
+	case NAME_VAR: 
+		{
+			NameVarNode* name_var = (NameVarNode*) variable;
+			const char* varname = symbol_table_get_name(symbol_table, name_var->name);
+			
+			*result_ptr = query->observe(query, varname);
+		}
+		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+
+	case FIELD_VAR:
+		pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
+		//break;
+	case INDEX_VAR:
+		{
+			IndexVarNode* index_var = (IndexVarNode*) variable;
+#define MH_SAMPLER_VARNAME_BUFFER_SIZE 1024
+			char varname[MH_SAMPLER_VARNAME_BUFFER_SIZE];
+
+			DUMP_START();
+	
+			/* array name */
+			const char* arrname = symbol_table_get_name(symbol_table, index_var->name);
+			DUMP(varname, MH_SAMPLER_VARNAME_BUFFER_SIZE, "%s", arrname);
+
+			/* indecies */
+			ExprSeqNode* expr_seq = ((IndexVarNode*) variable)->expr_seq;
+			if (!expr_seq) {
+				pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_EXPRESSION, "");
+			}
+			while (expr_seq) {
+
+				ExprNode* expr = expr_seq->expr;
+				pp_variable_t* sub = 0;
+				int status = execute_expr(expr, trace, &sub);
+				if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+					pp_sample_error_return(status, "");
+				}
+				if (sub->type != PP_VARIABLE_INT) {
+					pp_sample_error_return(PP_SAMPLE_FUNCTION_NON_INTEGER_SUBSCRIPTION, "");
+				}
+				int index = PP_VARIABLE_INT_VALUE(sub);
+				pp_variable_destroy(sub);
+				
+				DUMP(varname, MH_SAMPLER_VARNAME_BUFFER_SIZE, "[%d]", index);
+
+				expr_seq = expr_seq->expr_seq;
+			}
+
+			*result_ptr = query->observe(query, varname);
+			
+			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+		}
+	}
+
+	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
 }
 
 int mh_sampler_execute_for_stmt(mh_sampler_t* mh_sampler, ForStmtNode* stmt, pp_trace_t* p_trace) {
@@ -321,7 +418,7 @@ int mh_sampler_execute_stmt(mh_sampler_t* mh_sampler, StmtNode* stmt, pp_trace_t
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_INVALID_STATEMENT, "");
 	}
 
-//	ERR_OUTPUT("executing stmt:\n%s", dump_stmt(stmt));
+	//ERR_OUTPUT("executing stmt:\n%s", dump_stmt(stmt));
 	switch (stmt->type) {
 	case DRAW_STMT:
 		pp_sample_return(mh_sampler_execute_draw_stmt(mh_sampler, (DrawStmtNode*) stmt, trace));
@@ -362,7 +459,9 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 
 	/* initialize new trace */
 	mh_sampling_trace_t* new_trace = new_mh_sampling_trace(((pp_trace_t*) mh_sampler->current_trace)->symbol_table);
-	mh_sampler->ll_stale = ((pp_trace_t*) mh_sampler->current_trace)->logprob - old_sample->logprob + new_sample->logprob;
+	mh_sampler->ll_stale = ((pp_trace_t*) mh_sampler->current_trace)->logprob
+			- mh_sampler->current_trace->observed_logprob
+			- old_sample->logprob + new_sample->logprob;
 	mh_sampler->ll_fresh = 0.0;
 
 	/* set up parameters */
@@ -394,14 +493,26 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 	erp_entry->value = old_sample;
 	mh_sampling_sample_destroy(new_sample);
 
+	/*	printf("\nnew trace:\n");
+		static char buffer[8000];
+		pp_trace_dump(buffer, 8000, (pp_trace_t*) new_trace);
+		printf("%s\n", buffer); */
+
 	/* reject invaid runs */
-	int acc_result = pp_query_acceptor((pp_trace_t*) new_trace, query);
+	int acc_result = query->accept(query, (pp_trace_t*) new_trace);
 	if (acc_result == 0) {
 		((pp_trace_t*) new_trace)->logprob = -INFINITY;
 	}
 	else if (acc_result == -1) {
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 	}
+	
+	/*printf("\n\t\tlogprob\t\tsize\t\t\n");
+	printf("new\t%f\t\t%d\t\t\n", ((pp_trace_t*) new_trace)->logprob, mh_sampling_erp_hash_table_size(new_trace->erp_hash_table));
+	printf("old\t%f\t\t%d\t\t\n", ((pp_trace_t*) mh_sampler->current_trace) -> logprob, 
+			mh_sampling_erp_hash_table_size(mh_sampler->current_trace->erp_hash_table));
+	printf("R = %f, F = %f\n", R, F);
+	printf("ll_stale = %f, ll_fresh = %f\n\n", mh_sampler->ll_stale, mh_sampler->ll_fresh); */
 
 	float acceptance_rate = ((pp_trace_t*) new_trace)->logprob - ((pp_trace_t*) mh_sampler->current_trace)->logprob
 							+ R - F + log(mh_sampling_erp_hash_table_size((mh_sampler->current_trace)->erp_hash_table))
@@ -653,8 +764,8 @@ int mh_sampling_get_new_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_samplin
 	pp_sample_error_return(PP_SAMPLE_FUNCTION_UNHANDLED, "");
 }
 
-int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampling_sample_t* old_sample, mh_sampling_sample_t** sample_ptr) {
-
+int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, mh_sampling_trace_t* m_trace, mh_sampling_sample_t* old_sample, mh_sampling_sample_t** sample_ptr) {
+	pp_trace_t* trace = (pp_trace_t*) m_trace;
 	pp_variable_t** result_ptr = 0;
 	{
 		int status = get_variable_ptr(stmt->variable, trace, &result_ptr);
@@ -666,6 +777,31 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 		pp_variable_destroy(*result_ptr);
 	}
 	*result_ptr = pp_variable_clone(old_sample->value);
+
+	int status = mh_sampling_rescore(stmt, m_trace, *result_ptr, sample_ptr);
+	return status;
+}
+
+int mh_sampling_use_observed_value(DrawStmtNode* stmt, mh_sampling_trace_t* m_trace, pp_variable_t* variable) {
+	pp_trace_t* trace = (pp_trace_t*) m_trace;
+	pp_variable_t** result_ptr = 0;
+	{
+		int status = get_variable_ptr(stmt->variable, trace, &result_ptr);
+		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
+			pp_sample_error_return(status, "");
+		}
+	}
+	if (*result_ptr) {
+		pp_variable_destroy(*result_ptr);
+	}
+	*result_ptr = variable;
+
+	int status = mh_sampling_rescore(stmt, m_trace, variable, 0);
+	return status;
+}
+
+int mh_sampling_rescore(DrawStmtNode* stmt, mh_sampling_trace_t* m_trace, pp_variable_t* variable, mh_sampling_sample_t** sample_ptr) {
+	pp_trace_t* trace = (pp_trace_t*) m_trace;
 
 	#define EXECUTE_DRAW_STMT_GET_PARAM(n)	\
 		pp_variable_t** param = 0;	\
@@ -694,10 +830,15 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			EXECUTE_DRAW_STMT_CONVERT_PARAM(0, float, p, float);
 			EXECUTE_DRAW_STMT_CLEAR(1);
 
-			int sample = PP_VARIABLE_INT_VALUE(*result_ptr);
+			int sample = PP_VARIABLE_INT_VALUE(variable);
 			float logprob = flip_logprob(sample, p);
 			trace->logprob += logprob;
-			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, new_pp_float(p));
+
+			if (sample_ptr)
+				*sample_ptr = new_mh_sampling_sample(variable, logprob, 1, new_pp_float(p));
+			else
+				m_trace->observed_logprob += logprob;
+
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_MULTINOMIAL:
@@ -707,10 +848,15 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			int n = PP_VARIABLE_VECTOR_LENGTH(param[0]);
 			EXECUTE_DRAW_STMT_CLEAR(1);
 
-			int sample = PP_VARIABLE_INT_VALUE(*result_ptr);
+			int sample = PP_VARIABLE_INT_VALUE(variable);
 			float logprob = multinomial_logprob(sample, theta, n);
 			trace->logprob += logprob;
-			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 1, pp_variable_float_array_to_vector(theta, n));
+
+			if (sample_ptr)
+				*sample_ptr = new_mh_sampling_sample(variable, logprob, 1, pp_variable_float_array_to_vector(theta, n));
+			else
+				m_trace->observed_logprob += logprob;
+
 			free(theta);
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
@@ -725,10 +871,15 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, sigma, float);
 			EXECUTE_DRAW_STMT_CLEAR(2);
 
-			float sample = PP_VARIABLE_FLOAT_VALUE(*result_ptr);
+			float sample = PP_VARIABLE_FLOAT_VALUE(variable);
 			float logprob = gaussian_logprob(sample, mu, sigma);
 			trace->logprob += logprob;
-			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(mu), new_pp_float(sigma));
+
+			if (sample_ptr)
+				*sample_ptr = new_mh_sampling_sample(variable, logprob, 2, new_pp_float(mu), new_pp_float(sigma));
+			else
+				m_trace->observed_logprob += logprob;
+
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_GAMMA:
@@ -738,10 +889,15 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, b, float);
 			EXECUTE_DRAW_STMT_CLEAR(2);
 
-			float sample = PP_VARIABLE_FLOAT_VALUE(*result_ptr); 
+			float sample = PP_VARIABLE_FLOAT_VALUE(variable); 
 			float logprob = gamma_logprob(sample, a, b);
 			trace->logprob += logprob;
-			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(a), new_pp_float(b));
+
+			if (sample_ptr)
+				*sample_ptr = new_mh_sampling_sample(variable, logprob, 2, new_pp_float(a), new_pp_float(b));
+			else
+				m_trace->observed_logprob += logprob;
+
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 		break;
@@ -752,10 +908,15 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			EXECUTE_DRAW_STMT_CONVERT_PARAM(1, float, b, float);
 			EXECUTE_DRAW_STMT_CLEAR(2);
 
-			float sample = PP_VARIABLE_FLOAT_VALUE(*result_ptr);
+			float sample = PP_VARIABLE_FLOAT_VALUE(variable);
 			float logprob = beta_logprob(sample, a, b);
 			trace->logprob += logprob;
-			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(a), new_pp_float(b));
+
+			if (sample_ptr)
+				*sample_ptr = new_mh_sampling_sample(variable, logprob, 2, new_pp_float(a), new_pp_float(b));
+			else
+				m_trace->observed_logprob += logprob;
+
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 		}
 	case ERP_BINOMIAL:
@@ -777,10 +938,15 @@ int mh_sampling_reuse_old_sample(DrawStmtNode* stmt, pp_trace_t* trace, mh_sampl
 			for (int i = 0; i != n; ++i) {
 				alphas[i] = alpha;
 			}
-			float* sample = pp_variable_to_float_vector(*result_ptr);
+			float* sample = pp_variable_to_float_vector(variable);
 			float logprob = dirichlet_logprob(sample, alphas, n);
 			trace->logprob += logprob;
-			*sample_ptr = new_mh_sampling_sample(*result_ptr, logprob, 2, new_pp_float(alpha), new_pp_int(n));
+
+			if (sample_ptr)
+				*sample_ptr = new_mh_sampling_sample(variable, logprob, 2, new_pp_float(alpha), new_pp_int(n));
+			else
+				m_trace->observed_logprob += logprob;
+			
 			free(sample);
 			free(alphas);
 			pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
@@ -937,7 +1103,8 @@ int mh_sampling_random_walk(DrawStmtNode* node, mh_sampling_sample_t* sample, mh
 mh_sampling_trace_t* new_mh_sampling_trace(symbol_table_t* symbol_table) {
 	mh_sampling_trace_t* trace = malloc(sizeof(mh_sampling_trace_t));
 	__pp_trace_init((pp_trace_t*) trace, symbol_table, sizeof(mh_sampling_trace_t));
-
+	
+	trace->observed_logprob = 0.0;
 	trace->erp_hash_table = new_mh_sampling_erp_hash_table(8, 0.8);
 
 	return trace;

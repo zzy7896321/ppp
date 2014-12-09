@@ -79,6 +79,7 @@ const char* pp_sample_error_string[PP_SAMPLE_FUNCTION_ERROR_NUM] = {
 
 	"PP_SAMPLE_FUNCTION_MH_FAIL_TO_INITIALIZE",
 	"PP_SAMPLE_FUNCTION_QUERY_ERROR",
+	"PP_SAMPLE_FUNCTION_UNKNOWN_FUNCTION",
 };
 
 struct pp_trace_store_t* pp_sample(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], struct pp_query_t* query) {
@@ -123,7 +124,7 @@ int pp_get_result(pp_trace_store_t* traces, pp_query_t* query, float* result) {
 		char buffer[8096];
 		pp_trace_dump(traces->trace[i], buffer, 8096);
 		printf(buffer); */
-		int acc_result = pp_query_acceptor(traces->trace[i], query);
+		int acc_result = query->full_accept(query, traces->trace[i]);
 		if (acc_result == 1) {
 			++accepted_cnt;
 		}
@@ -135,3 +136,4 @@ int pp_get_result(pp_trace_store_t* traces, pp_query_t* query, float* result) {
 	*result = (float)(accepted_cnt) / num_traces;
 	return 0;
 }
+

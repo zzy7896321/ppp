@@ -25,14 +25,14 @@ int main()
 	//ModelNode* model = model_map_find(state->model_map, state->symbol_table, "flip_example");
 	//printf(dump_model(model));
 
-    query = pp_compile_query("");
+    query = pp_compile_string_query("");
     printf("> condition compiled\n");
 
 
     traces = pp_sample(state, "flip_example", 0, query);
     printf("> traces sampled\n");
 
-    //query = pp_compile_query("f== 1");
+    //query = pp_compile_string_query("f== 1");
     //printf("> query compiled\n");
 
     //pp_get_result(traces, query, &result);  // "get_result" may not be a good name 
