@@ -11,16 +11,18 @@
 
 #include "../common/mem_profile.h"
 
-#define K 10
+#define K 5
 #define N 100
 #define NWORDS 100
-#define VOCAB_SIZE 5000
+#define VOCAB_SIZE 1000
+
+int num_docs[N];
 
 int main()
 {
 	set_sample_method("Metropolis-hastings");
 	set_sample_iterations(1);
-	set_mh_burn_in(1000);
+	set_mh_burn_in(0);
 	set_mh_lag(1);
 	set_mh_max_initial_round(2000);
 
@@ -44,13 +46,12 @@ int main()
     //printf("> condition compiled\n");
 	
 
-	int num_docs[100];
 	for (int i = 0; i < N; ++i) num_docs[i] = NWORDS;
 
 	pp_variable_t* param[4] = {
 		new_pp_int(K),
 		new_pp_int(N),
-		pp_variable_int_array_to_vector(num_docs, 100),
+		pp_variable_int_array_to_vector(num_docs, N),
 		new_pp_int(VOCAB_SIZE),
 	};
 
@@ -113,19 +114,19 @@ int main()
 	for (int i = 0; i < N; ++i) {
 		int t, x;
 
-		for (int j = 0; j < NWORDS - 1; ++i) {
-			error |= pp_variable_access_int(topic_dist, &t, 2, i, j);
+		for (int j = 0; j < NWORDS - 1; ++j) {
+			error |= pp_variable_access_int(topic, &t, 2, i, j);
 			error |= pp_variable_access_int(X, &x, 2, i, j);
 
 			fprintf(out, "%d ", t);
 			fprintf(out2, "%d ", x);
 		}
 
-		error |= pp_variable_access_int(topic_dist, &t, 2, i, NWORDS - 1);
+		error |= pp_variable_access_int(topic, &t, 2, i, NWORDS - 1);
 		error |= pp_variable_access_int(X, &x, 2, i, NWORDS - 1);
 
 		fprintf(out, "%d\n", t);
-		fprintf(out, "%d\n", x);
+		fprintf(out2, "%d\n", x);
 	}
 	else error = 1;
 
@@ -144,8 +145,6 @@ int main()
     pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */
 
     pp_trace_store_destroy(traces);
-
-    free_pp_query_observation(query);
 
     for (int i = 0; i < 4; ++i)
         pp_variable_destroy(param[i]);

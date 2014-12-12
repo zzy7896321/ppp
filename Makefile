@@ -1,7 +1,8 @@
 SHELL = /bin/sh
 
 CC = gcc
-CFLAGS += -g -std=gnu99 -DDEBUG -lm #-DENABLE_MEM_PROFILE
+#CFLAGS += -g -std=gnu99 -DDEBUG -lm #-DENABLE_MEM_PROFILE
+CFLAGS += -O2 -std=gnu99 -lm
 ARFLAGS = cvr
 
 OBJS := 
