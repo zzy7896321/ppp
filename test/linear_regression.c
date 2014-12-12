@@ -11,6 +11,11 @@
 #include "../common/trace.h"
 
 int main() {
+	set_sample_method("Metropolis-hastings");
+	set_sample_iterations(1000);
+	set_mh_burn_in(200);
+	set_mh_lag(10);
+	set_mh_max_initial_round(2000);
 	
 	pp_state_t* state;
 	struct pp_instance_t* instance;
@@ -41,7 +46,7 @@ int main() {
 
 	query = pp_query_observe_float_array(state, "y", Y, N);
 
-	traces = pp_sample(state, "linear_regression", param, query);
+	traces = pp_sample_v(state, "linear_regression", param, query, 2, "a", "b");
 	if (!traces) {
 		return 1;
 	}

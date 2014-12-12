@@ -104,6 +104,22 @@ pp_trace_t* pp_trace_clone(pp_trace_t* trace) {
 	return new_trace;
 }
 
+pp_trace_t* pp_trace_output(pp_trace_t* trace, int num_output_vars, symbol_t output_vars[]) {
+	pp_trace_t* new_trace = malloc(sizeof(pp_trace_t));
+	new_trace->struct_size = sizeof(pp_trace_t);
+	new_trace->symbol_table = trace->symbol_table;
+	new_trace->logprob = trace->logprob;
+
+	new_trace->var_map = new_trace_var_map(num_output_vars * 5 / 4, 1);
+
+	for (int i = 0; i < num_output_vars; ++i) {
+		pp_variable_t* var = trace_var_map_find(trace->var_map, output_vars[i]);
+		trace_var_map_put(new_trace->var_map, output_vars[i], var);
+	}
+	
+	return new_trace;
+}
+
 size_t pp_trace_size(pp_trace_t* trace) {
 	return trace_var_map_size(trace->var_map);
 }

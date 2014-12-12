@@ -11,7 +11,7 @@
 
 #include "../common/mem_profile.h"
 
-void estimate_parameters(pp_trace_store_t* traces, float alpha, float beta, int k, int ndocs, int nwords[], int vocab_size) {
+void estimate_parameters(pp_trace_store_t* traces, float alpha, float beta, int k, int ndocs, int nwords[], int vocab_size, int* X, int dim2) {
 	
 	int n = traces->n;
 
@@ -22,17 +22,14 @@ void estimate_parameters(pp_trace_store_t* traces, float alpha, float beta, int 
 		pp_trace_t* trace = traces->trace[s];
 
 		pp_variable_t* topic = pp_trace_find_variable(trace, "topic");
-		pp_variable_t* X = pp_trace_find_variable(trace, "X");
 		
 		for (int i = 0; i < ndocs; ++i) {
 			pp_variable_t* topic_i = PP_VARIABLE_VECTOR_VALUE(topic)[i];
-			pp_variable_t* X_i = PP_VARIABLE_VECTOR_VALUE(X)[i];
 
 			for (int j = 0; j < nwords[i]; ++j) {
 				pp_variable_t* topic_i_j = PP_VARIABLE_VECTOR_VALUE(topic_i)[j];
-				pp_variable_t* X_i_j = PP_VARIABLE_VECTOR_VALUE(X_i)[j];
 				int topic_i_j_value = PP_VARIABLE_INT_VALUE(topic_i_j);
-				int X_i_j_value = PP_VARIABLE_INT_VALUE(X_i_j);
+				int X_i_j_value = *(X + dim2 * i + j);
 
 				nd[i * k + topic_i_j_value]++;
 				nw[topic_i_j_value * vocab_size + X_i_j_value]++;
@@ -79,6 +76,11 @@ int main()
 #ifdef ENABLE_MEM_PROFILE
     mem_profile_init();
 #endif
+	set_sample_method("Metropolis-hastings");
+	set_sample_iterations(200);
+	set_mh_burn_in(200);
+	set_mh_lag(50);
+	set_mh_max_initial_round(2000);
 
     /* use pointers to structs because the client doesn't need to know the struct sizes */
     struct pp_state_t* state;
@@ -116,7 +118,7 @@ int main()
 	query = pp_query_observe_int_array_2D(state, "X", &X[0][0], 2, 2);
 	if (!query) return 1;
 
-    traces = pp_sample(state, "latent_dirichlet_allocation", param, query);
+    traces = pp_sample_v(state, "latent_dirichlet_allocation", param, query, 1, "topic");
     printf("> traces sampled\n");
 
     if (!traces) {
@@ -151,7 +153,7 @@ int main()
 	int nwords[] = {2, 2};
 
 	/* parameter estimation */
-	estimate_parameters(traces, 1.0, 1.0, 2, 2, nwords, 3);
+	estimate_parameters(traces, 1.0, 1.0, 2, 2, nwords, 3, &X[0][0], 2);
 
 	// pp_free is broken
     pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */

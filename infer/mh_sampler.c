@@ -20,6 +20,18 @@ unsigned g_mh_sampler_burn_in_iterations = 200;
 unsigned g_mh_sampler_lag = 20;
 unsigned g_mh_sampler_maximum_initial_round = 200;
 
+void set_mh_burn_in(int burn_in) {	
+	g_mh_sampler_burn_in_iterations = burn_in;
+}
+
+void set_mh_lag(int lag) {
+	g_mh_sampler_lag = lag;
+}
+
+void set_mh_max_initial_round(int initial_round) {
+	g_mh_sampler_maximum_initial_round = initial_round;
+}
+
 #define STACK_DEFAULT_VALUE 0
 #define STACK_DESTROY_VALUE(value)
 DEFINE_STACK(loop_index, unsigned)
@@ -54,7 +66,16 @@ static PPP_INLINE unsigned bkdr_hash(const char* str) {
 #endif
 #include "../common/hash_table.h"
 
-int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query, void** internal_data_ptr, pp_trace_t** trace_ptr) {
+int mh_sampling(
+		struct pp_state_t* state, 
+		const char* model_name, 
+		pp_variable_t* param[], 
+		pp_query_t* query, 
+		void** internal_data_ptr, 
+		pp_trace_t** trace_ptr,
+		int num_output_vars,
+		symbol_t output_vars[]) 
+{
 
 	mh_sampler_t* mh_sampler = (mh_sampler_t*)(*internal_data_ptr);
 	//ERR_OUTPUT("entering mh_sampling\n");
@@ -81,10 +102,12 @@ int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t*
 			pp_sample_error_return(status, "");	
 		}
 	
-		printf("\nafter init:\n");
-		static char buffer[8000];
-		pp_trace_dump(buffer, 8000, (pp_trace_t*) mh_sampler->current_trace);
-		printf("%s\n", buffer);
+		/*
+		 *printf("\nafter init:\n");
+		 *static char buffer[8000];
+		 *pp_trace_dump(buffer, 8000, (pp_trace_t*) mh_sampler->current_trace);
+		 *printf("%s\n", buffer);
+		 */
 
 		for (unsigned i = 0; i != g_mh_sampler_burn_in_iterations; ++i) {
 			int status = mh_sampler_step(mh_sampler);
@@ -106,7 +129,10 @@ int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t*
 	/*static char buffer[8000];
 	pp_trace_dump(mh_sampler->current_trace, buffer, 8000);
 	printf("%s\n"); */
-	*trace_ptr = pp_trace_clone((pp_trace_t*) mh_sampler->current_trace);
+	if (num_output_vars == 0) 
+		*trace_ptr = pp_trace_clone((pp_trace_t*) mh_sampler->current_trace);
+	else
+		*trace_ptr = pp_trace_output((pp_trace_t*) mh_sampler->current_trace, num_output_vars, output_vars);
 
 	pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 }

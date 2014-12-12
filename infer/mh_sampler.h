@@ -10,8 +10,6 @@ extern unsigned g_mh_sampler_burn_in_iterations;
 extern unsigned g_mh_sampler_lag;
 extern unsigned g_mh_sampler_maximum_initial_round;
 
-int mh_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query, void** internal_data_ptr, pp_trace_t** trace_ptr);
-
 typedef struct mh_sampling_trace_t mh_sampling_trace_t;
 typedef struct mh_sampler_t mh_sampler_t;
 

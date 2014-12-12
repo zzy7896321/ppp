@@ -3,7 +3,17 @@
 #include "../debug.h"
 
 
-int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query, void** internal_data_ptr, pp_trace_t** trace_ptr) {
+int rejection_sampling(
+		struct pp_state_t* state, 
+		const char* model_name, 
+		pp_variable_t* param[], 
+		pp_query_t* query, 
+		void** internal_data_ptr, 
+		pp_trace_t** trace_ptr, 
+		int num_output_vars,
+		symbol_t output_vars[]) 
+{
+
 	/* nothing to do with internal_data_ptr */
 	if (!state) {
 		//ERR_OUTPUT("clean up internal data\n");
@@ -60,7 +70,13 @@ int rejection_sampling(struct pp_state_t* state, const char* model_name, pp_vari
 		}
 	}
 
-	*trace_ptr = trace;
+	if (num_output_vars == 0)
+		*trace_ptr = trace;
+	else {
+		*trace_ptr = pp_trace_output(trace, num_output_vars, output_vars);
+		pp_trace_destroy(trace);
+	}
+
 	pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 }
 

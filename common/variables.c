@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 #ifdef ENABLE_MEM_PROFILE
 #include "../common/mem_profile.h"
@@ -306,4 +307,58 @@ void pp_variable_destroy(pp_variable_t* variable) {
 		PP_VARIABLE_DEALLOC(pp_vector_t, variable, 1);
 		break;
 	}
+}
+
+int __pp_variable_traverse(pp_variable_t** p_var, int dims, va_list args) {
+	while (dims-- > 0) {
+		if ((*p_var)->type != PP_VARIABLE_VECTOR) {
+			return 1;
+		}
+	
+		int index = va_arg(args, int);
+		if (index < 0 || index >= PP_VARIABLE_VECTOR_LENGTH(*p_var)) {
+			return 1;
+		}
+
+		*p_var = PP_VARIABLE_VECTOR_VALUE(*p_var)[index];
+	}
+	return 0;
+}
+
+/* 0: success, 1: error */
+int pp_variable_access_int(pp_variable_t* variable, int* value, int dims, ...) {
+	if (!variable || dims < 0) return 1;
+
+	va_list args;
+	va_start(args, dims);
+
+	int tres = __pp_variable_traverse(&variable, dims, args);	
+
+	va_end(args);
+
+	if (tres || variable->type != PP_VARIABLE_INT) {
+		return 1;	
+	}
+	
+	if (value)
+		*value = PP_VARIABLE_INT_VALUE(variable);
+	return 0;
+}
+
+int pp_variable_access_float(pp_variable_t* variable, float* value, int dims, ...) {
+	if (!variable || dims < 0) return 1;
+
+	va_list args;
+	va_start(args, dims);
+
+	int tres = __pp_variable_traverse(&variable, dims, args);	
+
+	va_end(args);
+
+	if (tres || variable->type != PP_VARIABLE_FLOAT) {
+		return 1;	
+	}
+
+	*value = PP_VARIABLE_FLOAT_VALUE(variable);
+	return 0;
 }

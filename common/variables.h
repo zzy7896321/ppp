@@ -55,6 +55,9 @@ int pp_variable_equal(pp_variable_t* lhs, pp_variable_t* rhs);
 pp_variable_t* pp_variable_float_array_to_vector(float arr[], int n);
 pp_variable_t* pp_variable_int_array_to_vector(int arr[], int n);
 
+int pp_variable_access_int(pp_variable_t* variable, int* value, int dims, ...);
+int pp_variable_access_float(pp_variable_t* variable, float* value, int dims, ...);
+
 void pp_variable_destroy(pp_variable_t* variable);
 
 #endif

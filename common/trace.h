@@ -39,6 +39,8 @@ int pp_trace_dump(char* buffer, int buf_size, pp_trace_t* trace);
 
 pp_trace_t* pp_trace_clone(pp_trace_t* trace);
 
+pp_trace_t* pp_trace_output(pp_trace_t* trace, int num_output_vars, symbol_t output_vars[]);
+
 size_t pp_trace_size(pp_trace_t* trace);
 
 size_t pp_trace_get_struct_size(pp_trace_t* trace);
