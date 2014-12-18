@@ -45,6 +45,8 @@ size_t pp_trace_size(pp_trace_t* trace);
 
 size_t pp_trace_get_struct_size(pp_trace_t* trace);
 
+void pp_trace_clear(pp_trace_t* trace);
+
 void pp_trace_destroy(pp_trace_t* trace);
 
 typedef struct pp_trace_store_t {

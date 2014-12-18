@@ -62,32 +62,6 @@ extern const char* pp_sample_error_string[PP_SAMPLE_FUNCTION_ERROR_NUM];
 
 #define pp_sample_normal_return(status)	return PP_SAMPLE_FUNCTION_NORMAL
 
-//typedef int (*sample_function_t)(
-	//struct pp_state_t* state,
-	//const char* model_name,
-	//pp_variable_t* param[],
-	//pp_query_t* query,
-	//void** internal_data_ptr, 
-	//pp_trace_t** trace_ptr);
-
-//typedef int (*sample_function_t)(
-	//struct pp_state_t* state,
-	//const char* model_name,
-	//pp_variable_t* param[],
-	//pp_query_t* query,
-	//void** internal_data_ptr, 
-	//pp_trace_t** trace_ptr;
-	//symbol_t output_vars[]);
-
-//#define DECLARE_SAMPLE_FUNCTION(func_name)	\
-	//int func_name(	\
-		//struct pp_state_t* state,	\
-		//const char* model_name,	\
-		//pp_variable_t* param[],	\
-		//pp_query_t* query,	\
-		//void** internal_data_ptr, \
-		//pp_trace_t** trace_ptr)
-
 #define DECLARE_SAMPLE_FUNCTION(func_name)	\
 	int func_name(	\
 		struct pp_state_t* state,	\
@@ -96,21 +70,33 @@ extern const char* pp_sample_error_string[PP_SAMPLE_FUNCTION_ERROR_NUM];
 		pp_query_t* query,	\
 		void** internal_data_ptr, \
 		pp_trace_t** trace_ptr,	\
-		int num_output_vars,	\
-		symbol_t output_vars[])	
+		sample_acceptor sa,	\
+		void* sa_data)	
 
 typedef DECLARE_SAMPLE_FUNCTION((*sample_function_t));
 
-struct pp_trace_store_t* pp_sample(struct pp_state_t* state, 
+struct pp_trace_store_t* pp_sample(
+		struct pp_state_t* state, 
 		const char* model_name, 
 		struct pp_variable_t* param[], 
 		struct pp_query_t* query);
-struct pp_trace_store_t* pp_sample_v(struct pp_state_t* state, 
+
+struct pp_trace_store_t* pp_sample_v(
+		struct pp_state_t* state, 
 		const char* model_name, 
 		struct pp_variable_t* param[], 
 		struct pp_query_t* query, 
 		int num_output_vars, 
 		...);
+
+int pp_sample_f(
+		struct pp_state_t *state,
+		const char* model_name,
+		struct pp_variable_t *param[],
+		struct pp_query_t *query,
+		sample_acceptor sa,
+		void* sa_data);
+
 
 DECLARE_SAMPLE_FUNCTION(rejection_sampling);
 DECLARE_SAMPLE_FUNCTION(mh_sampling);

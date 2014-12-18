@@ -28,54 +28,6 @@ void set_sample_method(const char* sample_method) {
 	}
 }
 
-/*
- *void init_sample_iterations()
- *{
- *    char* sample_iterations = getenv("SAMPLE_ITERATIONS");
- *    if (sample_iterations) {
- *        g_sample_iterations = atoi(sample_iterations);
- *        fprintf(stderr, "init_sample_iterations (%d): g_sample_iterations=%d\n", __LINE__, g_sample_iterations);
- *    }
- *
- *    ERR_OUTPUT("SAMPLE_ITERATIONS = %d\n", g_sample_iterations);
- *}
- *
- *void init_sample_method() {
- *    char* sample_method= getenv("SAMPLE_METHOD");
- *    if (sample_method) {
- *        g_sample_method = sample_method;
- *    }
- *
- *    if (g_sample_method[0] == 'R') {
- *        ERR_OUTPUT("SAMPLE_METHOD = Rejection\n");
- *        g_sample_function = rejection_sampling;
- *    }
- *
- *    else {
- *        ERR_OUTPUT("SAMPLE METHOD = Metropolis-Hastings\n");
- *        g_sample_function = mh_sampling;
- *
- *        char* burn_in_round = getenv("MH_BURN_IN");
- *        if (burn_in_round) {
- *            g_mh_sampler_burn_in_iterations = atoi(burn_in_round);
- *        }
- *        ERR_OUTPUT("MH_BURN_IN = %d\n", g_mh_sampler_burn_in_iterations);
- *
- *        char* lag = getenv("MH_LAG");
- *        if (lag) {
- *            g_mh_sampler_lag = atoi(lag);
- *        }
- *        ERR_OUTPUT("MH_LAG = %d\n", g_mh_sampler_lag);
- *
- *        char* max_initial_round = getenv("MH_MAX_INITIAL_ROUND");
- *        if (max_initial_round) {
- *            g_mh_sampler_maximum_initial_round = atoi(max_initial_round);
- *        }
- *        ERR_OUTPUT("MH_MAX_INITIAL_ROUND = %d\n", g_mh_sampler_maximum_initial_round);
- *    }
- *}
- */
-
 const char* pp_sample_error_string[PP_SAMPLE_FUNCTION_ERROR_NUM] = {
 	"PP_SAMPLE_FUNCTION_NORMAL",
 	"PP_SAMPLE_FUNCTION_MODEL_NOT_FOUND",
@@ -107,6 +59,22 @@ struct pp_trace_store_t* pp_sample(
 	return pp_sample_v(state, model_name, param, query, 0);
 }
 
+typedef struct __pp_sample_v_data_t {
+	int num_output_vars;
+	symbol_t *output_vars;
+	int itrace;
+	pp_trace_store_t *traces;
+} __pp_sample_v_data_t;
+
+void __pp_sample_v_acceptor(void *p_data, pp_trace_t* trace) {
+	__pp_sample_v_data_t *data = (__pp_sample_v_data_t*) p_data;
+
+	if (data->num_output_vars) 
+		data->traces->trace[data->itrace++] = pp_trace_output(trace, data->num_output_vars, data->output_vars);
+	else
+		data->traces->trace[data->itrace++] = pp_trace_clone(trace);
+}
+
 struct pp_trace_store_t* pp_sample_v(
 		struct pp_state_t* state, 
 		const char* model_name, 
@@ -114,6 +82,42 @@ struct pp_trace_store_t* pp_sample_v(
 		struct pp_query_t* query, 
 		int num_output_vars, 
 		...) 
+{
+	symbol_t* output_vars = malloc(sizeof(symbol_t) * num_output_vars);
+	symbol_table_t* symbol_table = state->symbol_table;
+
+	va_list varargs;
+	va_start(varargs, num_output_vars);
+	for (int i = 0; i < num_output_vars; ++i) {
+		const char* varname = va_arg(varargs, const char*);
+		symbol_t symbol = symbol_table_lookup(symbol_table, varname);
+
+		output_vars[i] = symbol;
+	}
+	va_end(varargs);
+	
+	__pp_sample_v_data_t data = { 
+		.num_output_vars = num_output_vars,
+		.output_vars = output_vars,
+		.itrace = 0,
+		.traces = new_pp_trace_store(g_sample_iterations),
+	};
+
+	int ret = pp_sample_f(state, model_name, param, query, __pp_sample_v_acceptor, &data);
+
+	free(output_vars);
+
+	if (ret) return 0;
+	return data.traces;
+}
+
+int pp_sample_f(
+		struct pp_state_t *state,
+		const char *model_name,
+		pp_variable_t *param[],
+		struct pp_query_t *query,
+		sample_acceptor sa,
+		void* sa_data)
 {
 	if (g_sample_function == rejection_sampling) {
 		ERR_OUTPUT("sample_method = rejection\n");
@@ -131,28 +135,16 @@ struct pp_trace_store_t* pp_sample_v(
 		ERR_OUTPUT("MH_MAX_INITIAL_ROUND = %d\n", g_mh_sampler_maximum_initial_round);
 	}
 
-	symbol_t* output_vars = malloc(sizeof(symbol_t) * num_output_vars);
-	symbol_table_t* symbol_table = state->symbol_table;
-
-	va_list varargs;
-	va_start(varargs, num_output_vars);
-	for (int i = 0; i < num_output_vars; ++i) {
-		const char* varname = va_arg(varargs, const char*);
-		symbol_t symbol = symbol_table_lookup(symbol_table, varname);
-
-		output_vars[i] = symbol;
-	}
-	va_end(varargs);
 	
 	pp_trace_store_t* traces = new_pp_trace_store(g_sample_iterations);
 	void* internal_data = 0;
 	for (unsigned i = 0; i < g_sample_iterations; ++i) {
-		//ERR_OUTPUT("sample round %d\n", i);
-		int status = g_sample_function(state, model_name, param, query, &internal_data, &(traces->trace[i]), num_output_vars, output_vars);
+		ERR_OUTPUT("sample round %d\n", i);
+		int status = g_sample_function(state, model_name, param, query, &internal_data, &(traces->trace[i]), sa, sa_data);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			ERR_OUTPUT("error: %s\n", pp_sample_get_error_string(status));
 			pp_trace_store_destroy(traces);
-			return 0;
+			return 1;
 		}
 
 		/*ERR_OUTPUT("sample round %d\n", i);
@@ -162,12 +154,11 @@ struct pp_trace_store_t* pp_sample_v(
 	}
 
 	/* clear up */
-	g_sample_function(0, 0, 0, 0, &internal_data, 0, num_output_vars, output_vars);
+	g_sample_function(0, 0, 0, 0, &internal_data, 0, 0, 0);
 
-	free(output_vars);
-
-	return traces;
+	return 0;
 }
+
 
 int pp_get_result(pp_trace_store_t* traces, pp_query_t* query, float* result) {
 	if (!result) return 1;

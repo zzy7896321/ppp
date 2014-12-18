@@ -2,6 +2,7 @@
 #include "ppp.h"
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 
 #include "../query/string_query.h"
 #include "../query/observation.h"
@@ -11,75 +12,97 @@
 
 #include "../common/mem_profile.h"
 
-void estimate_parameters(pp_trace_store_t* traces, float alpha, float beta, int k, int ndocs, int nwords[], int vocab_size, int* X, int dim2) {
-	
-	int n = traces->n;
+#define K 5
+#define N 100
+#define NWORDS 100
+#define NTRAINWORDS 80
+#define NTESTWORDS 20
+#define VOCAB_SIZE 1000
+#define ALPHA 1
+#define BETA 1
 
-	int* nd = (int*) calloc(ndocs * k, sizeof(int));
-	int* nw = (int*) calloc(k * vocab_size, sizeof(int));
+#define NSAMPLES 1000
 
-	for (int s = 0; s < n; ++s) {
-		pp_trace_t* trace = traces->trace[s];
+int num_docs[N];
+int X[N][NTRAINWORDS];
+int X_t[N][NTESTWORDS];
+int nd[N][K];
+int nw[K][VOCAB_SIZE];
+int snw[K];
 
-		pp_variable_t* topic = pp_trace_find_variable(trace, "topic");
-		
-		for (int i = 0; i < ndocs; ++i) {
-			pp_variable_t* topic_i = PP_VARIABLE_VECTOR_VALUE(topic)[i];
+float theta[N][K];
+float phi[K][VOCAB_SIZE];
 
-			for (int j = 0; j < nwords[i]; ++j) {
-				pp_variable_t* topic_i_j = PP_VARIABLE_VECTOR_VALUE(topic_i)[j];
-				int topic_i_j_value = PP_VARIABLE_INT_VALUE(topic_i_j);
-				int X_i_j_value = *(X + dim2 * i + j);
+void stat_sample(void* data, struct pp_trace_t* trace) {
+	pp_variable_t* topic = pp_trace_find_variable(trace, "topic");
 
-				nd[i * k + topic_i_j_value]++;
-				nw[topic_i_j_value * vocab_size + X_i_j_value]++;
-			}
+	for (int i = 0; i < N; ++i) {
+		pp_variable_t* topic_i = PP_VARIABLE_VECTOR_VALUE(topic)[i];
+		for (int j = 0; j < NTRAINWORDS; ++j) {
+			pp_variable_t* topic_i_j = PP_VARIABLE_VECTOR_VALUE(topic_i)[j];
+			int t = PP_VARIABLE_INT_VALUE(topic_i_j);
+
+			nd[i][t]++;
+			nw[t][X[i][j]]++;
+			snw[t]++;
 		}
 	}
+}
 
-	float* theta = (float*) calloc(ndocs * k, sizeof(float));
-	float* phi = (float*) calloc(k * vocab_size, sizeof(float));
+void estimate() {	
+	FILE* out = fopen("test/lda_estimated_param.txt", "w");
+	fprintf(out, "theta:\n");
 
-	printf("theta:\n");
-
-	for (int i = 0; i < ndocs; ++i) {
-		for (int j = 0; j < k; ++j) {
-			theta[i * k + j] = (nd[i * k + j] + alpha) / (nwords[i] * n + k * alpha);
-			printf("%f ", theta[i * k + j]);		
+	for (int i = 0; i < N; ++i) {
+			
+		for (int j = 0; j < K; ++j) {
+			theta[i][j] = (nd[i][j] + ALPHA) / (float)(NTRAINWORDS * NSAMPLES + K * ALPHA); 
+			fprintf(out, "%f ", theta[i][j]);		
 		}	
-		printf("\n");
+		fprintf(out, "\n");
 	}
 		
-	printf("\nphi:\n");
+	fprintf(out, "\nphi:\n");
 
-	for (int i = 0; i < k; ++i) {
-		int s = 0;
-		for (int j = 0; j < vocab_size; ++j) {
-			s += nw[i * vocab_size + j];
+	for (int i = 0; i < K; ++i) {
+		for (int j = 0; j < VOCAB_SIZE; ++j) {
+			phi[i][j] = (nw[i][j] + BETA) / (float)(snw[i] + VOCAB_SIZE * BETA);
+			fprintf(out, "%f ", phi[i][j]);
 		}
-
-		for (int j = 0; j < vocab_size; ++j) {
-			phi[i * vocab_size + j] = (nw[i * vocab_size + j] + beta) / (s + vocab_size * beta);
-			printf("%f ", phi[i * vocab_size + j]);
-		}
-		printf("\n");
+		fprintf(out, "\n");
 	}
 
-	free(theta);
-	free(phi);
-	free(nw);
-	free(nd);
+	fclose(out);
+}
+
+float get_word_logprob(int doc, int word) {
+
+	float s = 0;
+	for (int i = 0; i < K; ++i) {
+		s += theta[doc][i] * phi[i][word];
+	}
+	return log(s);
+}
+
+void calculate_perplexity() {
+	float s = 0;
+	for (int i = 0; i < N; ++i) {
+		for (int j = NTRAINWORDS; j < NWORDS; ++j) {
+			s += get_word_logprob(i, X_t[i][j - NTRAINWORDS]);
+		}
+	}
+	s /= N * NTESTWORDS;
+	s = exp(-s);	
+
+	printf("perplexity = %f\n", s);
 }
 
 int main()
 {
-#ifdef ENABLE_MEM_PROFILE
-    mem_profile_init();
-#endif
 	set_sample_method("Metropolis-hastings");
-	set_sample_iterations(200);
-	set_mh_burn_in(200);
-	set_mh_lag(50);
+	set_sample_iterations(NSAMPLES);
+	set_mh_burn_in(20);
+	set_mh_lag(5);
 	set_mh_max_initial_round(2000);
 
     /* use pointers to structs because the client doesn't need to know the struct sizes */
@@ -87,7 +110,6 @@ int main()
     struct pp_instance_t* instance;
     struct pp_query_t* query;
     struct pp_trace_store_t* traces;
-    float result;
 
     state = pp_new_state();
     printf("> state created\n");
@@ -98,78 +120,43 @@ int main()
 	ModelNode* model = model_map_find(state->model_map, state->symbol_table, "latent_dirichlet_allocation");
 	printf(dump_model(model));
 
-    //query = pp_compile_string_query("");
-    //printf("> condition compiled\n");
+	for (int i = 0; i < N; ++i) num_docs[i] = NTRAINWORDS;
 
-	pp_variable_t** param = malloc(sizeof(pp_variable_t*) * 4);
-	param[0] = new_pp_int(2);
-	param[1] = new_pp_int(2);
-	param[2] = new_pp_vector(2);
-	PP_VARIABLE_VECTOR_LENGTH(param[2]) = 2;
-	for (int i = 0; i < 2; ++i) {
-		PP_VARIABLE_VECTOR_VALUE(param[2])[i] = new_pp_int(2);
-	}
-	param[3] = new_pp_int(3);	
-
-	int X[2][2] = {
-		{0, 0},
-		{1, 1},
+	pp_variable_t* param[4] = {
+		new_pp_int(K),
+		new_pp_int(N),
+		pp_variable_int_array_to_vector(num_docs, N),
+		new_pp_int(VOCAB_SIZE),
 	};
-	query = pp_query_observe_int_array_2D(state, "X", &X[0][0], 2, 2);
-	if (!query) return 1;
+	
+	FILE* in = fopen("test/lda_words.txt", "r");
+	for (int i = 0; i < N; ++i) {
+		for (int j = 0; j < NTRAINWORDS; ++j) {
+			fscanf(in, "%d", &X[i][j]);
+		}
+		for (int j = NTRAINWORDS; j < NWORDS; ++j) {
+			fscanf(in, "%d", &X_t[i][j - NTRAINWORDS]);
+		}
+	}
+	fclose(in);
 
-    traces = pp_sample_v(state, "latent_dirichlet_allocation", param, query, 1, "topic");
-    printf("> traces sampled\n");
+	query = pp_query_observe_int_array_2D(state, "X", (int*)X, N, NTRAINWORDS);
+	
+	int result = pp_sample_f(state, "latent_dirichlet_allocation", param, query, stat_sample, 0);	
+	if (result) {
+		printf("error\n");
+		return 1;
+	}
 
-    if (!traces) {
-        printf("ERROR encountered!!\n");
-        return 1;
-    }
-
-	char buffer[8096];
-
-    size_t max_index = 0;
-    for (size_t i = 1; i < traces->n; ++i) {
-    	if (traces->trace[i]->logprob > traces->trace[max_index]->logprob) {
-    		max_index = i;
-    	}
-    }
-    printf("\nsample with max logprob:\n");
-    pp_trace_dump(buffer, 8096, traces->trace[max_index]);
-    printf(buffer);
-
-	printf("\nlast sample:\n");
-	pp_trace_dump(buffer, 8096, traces->trace[traces->n - 1]);
-	printf(buffer); 
-
-    FILE* trace_dump_file = fopen("trace_dump.txt", "w");
-    for (size_t i = 0; i != traces->n; ++i) {
-        pp_trace_dump(buffer, 8096, traces->trace[i]);
-        fprintf(trace_dump_file, "[trace %u]\n", i);
-        fprintf(trace_dump_file, buffer);
-    }
-    fclose(trace_dump_file);
-
-	int nwords[] = {2, 2};
-
-	/* parameter estimation */
-	estimate_parameters(traces, 1.0, 1.0, 2, 2, nwords, 3, &X[0][0], 2);
-
-	// pp_free is broken
-    pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */
-
-    pp_trace_store_destroy(traces);
-
-    free_pp_query_observation(query);
-
-    for (int i = 0; i < 4; ++i)
-        pp_variable_destroy(param[i]);
-	free(param);
-
-#ifdef ENABLE_MEM_PROFILE
-    mem_profile_print();
-    mem_profile_destroy();
-#endif
-
+	free_pp_query_observation(query);
+	
+	printf("estimate\n");
+	estimate();
+	printf("perplexity\n");
+	calculate_perplexity();
+	
+	for (int i = 0; i < 4; ++i) pp_variable_destroy(param[i]);
+	pp_free(state);
+	
     return 0;
 }

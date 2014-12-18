@@ -128,6 +128,10 @@ size_t pp_trace_get_struct_size(pp_trace_t* trace) {
 	return trace->struct_size;
 }
 
+void pp_trace_clear(pp_trace_t* trace) {
+	trace_var_map_clear(trace->var_map);
+}
+
 void pp_trace_destroy(pp_trace_t* trace) {
 	if (!trace) return ;
 	

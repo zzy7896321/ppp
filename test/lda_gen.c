@@ -42,10 +42,6 @@ int main()
 	ModelNode* model = model_map_find(state->model_map, state->symbol_table, "latent_dirichlet_allocation");
 	printf(dump_model(model));
 
-    //query = pp_compile_string_query("");
-    //printf("> condition compiled\n");
-	
-
 	for (int i = 0; i < N; ++i) num_docs[i] = NWORDS;
 
 	pp_variable_t* param[4] = {

@@ -10,14 +10,24 @@ int rejection_sampling(
 		pp_query_t* query, 
 		void** internal_data_ptr, 
 		pp_trace_t** trace_ptr, 
-		int num_output_vars,
-		symbol_t output_vars[]) 
+		sample_acceptor sa,
+		void *sa_data)
 {
+	pp_trace_t* trace = (pp_trace_t*) *internal_data_ptr;
 
 	/* nothing to do with internal_data_ptr */
 	if (!state) {
 		//ERR_OUTPUT("clean up internal data\n");
+		if (trace)
+			pp_trace_destroy(trace);
+		*internal_data_ptr = 0;
+
 		pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
+	}
+
+	if (!trace) {
+		trace = new_pp_trace(state->symbol_table);
+		*internal_data_ptr = (void*) trace;
 	}
 
 	/* find model */
@@ -26,10 +36,8 @@ int rejection_sampling(
 		pp_sample_error_return(PP_SAMPLE_FUNCTION_MODEL_NOT_FOUND, ": %s", model_name);
 	}
 
-	pp_trace_t* trace = 0;
 	while (1) {
-		/* initialize trace */
-		trace = new_pp_trace(state->symbol_table);
+		pp_trace_clear(trace);
 
 		/* set up parameters */
 		pp_variable_t** realparam = param;
@@ -48,7 +56,6 @@ int rejection_sampling(
 
 			int status = execute_stmt(stmt, trace);
 			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
-				pp_trace_destroy(trace);
 				pp_sample_error_return(status, "");
 			}
 			stmts = stmts->stmts;
@@ -62,20 +69,13 @@ int rejection_sampling(
 		}
 		else if (acc_result == PP_QUERY_REJECTED){
 			// ERR_OUTPUT("reject\n");
-			pp_trace_destroy(trace);
 		}
 		else {
-			pp_trace_destroy(trace);
 			pp_sample_error_return(PP_SAMPLE_FUNCTION_QUERY_ERROR, "");
 		}
 	}
 
-	if (num_output_vars == 0)
-		*trace_ptr = trace;
-	else {
-		*trace_ptr = pp_trace_output(trace, num_output_vars, output_vars);
-		pp_trace_destroy(trace);
-	}
+	sa(sa_data, trace);
 
 	pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 }
