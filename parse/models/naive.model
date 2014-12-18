@@ -1,0 +1,14 @@
+model naive_bayes(K, N, nwords, V, alpha, beta) {
+	theta ~ dirichlet(alpha, K)
+	for i = 0 to K-1 {
+		phi[i] ~ dirichlet(beta, V)
+	}
+
+	for i = 0 to N-1 {
+		c[i] ~ multinomial(theta)
+		dist = phi[c[i]]
+		for j = 0 to nwords {
+			X[i, j] ~ multinomial(dist)
+		}
+	}
+}
