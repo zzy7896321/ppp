@@ -159,8 +159,8 @@ int main()
     pp_free(state);  /* free memory, associated models, instances, queries, and trace stores are deallocated */
 
     pp_trace_store_destroy(traces);
-
-    free_pp_query_observation(query);
+	
+	pp_query_destroy(query);
 
     for (int i = 0; i < 4; ++i)
         pp_variable_destroy(param[i]);

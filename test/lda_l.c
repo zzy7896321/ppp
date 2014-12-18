@@ -147,8 +147,8 @@ int main()
 		printf("error\n");
 		return 1;
 	}
-
-	free_pp_query_observation(query);
+	
+	pp_query_destroy(query);
 	
 	printf("estimate\n");
 	estimate();

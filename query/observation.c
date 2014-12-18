@@ -25,12 +25,19 @@ int pp_query_observation_full_accept(pp_query_t* query, pp_trace_t* trace) {
 	return PP_QUERY_REJECTED;
 }
 
+void pp_query_observation_destroy(pp_query_observation_t* observation);
+
+static void __pp_query_observation_destroy(void* query) {
+	pp_query_observation_destroy((pp_query_observation_t*) query);
+}
+
 pp_query_observation_t* new_pp_query_observation(const char* varname, pp_variable_t* variable) {
 	pp_query_observation_t* query = malloc(sizeof(pp_query_observation_t));
 
 	query->super.observe = pp_query_observe_value;
 	query->super.accept = pp_query_always_accept;
 	query->super.full_accept = pp_query_observation_full_accept;
+	query->super.destroy = __pp_query_observation_destroy;
 
 	query->varname = strdup(varname);
 	query->variable = variable;
@@ -44,7 +51,6 @@ void pp_query_observation_destroy(pp_query_observation_t* observation) {
 
 	free(observation);
 }
-
 
 pp_query_t* pp_query_observe_int(pp_state_t* state, const char* varname, int value) {
 	pp_variable_t* var = new_pp_int(value);
@@ -92,10 +98,6 @@ pp_query_t* pp_query_observe_float_array_2D(pp_state_t* state, const char* varna
 
 	pp_query_t* query = (pp_query_t*) new_pp_query_observation(varname, var);
 	return query;
-}
-
-void free_pp_query_observation(pp_query_t* query) {
-	pp_query_observation_destroy((pp_query_observation_t*) query);
 }
 
 pp_variable_t* pp_query_observe_value(pp_query_t* query, const char* varname) {

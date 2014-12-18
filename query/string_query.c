@@ -18,6 +18,10 @@ const char* pp_string_query_compare_string[] = {
 
 static int pp_string_query_acceptor(pp_query_t* query, pp_trace_t* trace);
 
+static void __pp_string_query_destroy(void* query) {
+	pp_string_query_destroy((pp_string_query_t*) query);
+}
+
 struct pp_string_query_t* new_pp_string_query(const char* varname, ilist_entry_t* index,
 								pp_string_query_compare_t compare, pp_variable_t* threshold, pp_string_query_t* next) {
 	pp_string_query_t* query = malloc(sizeof(pp_string_query_t));
@@ -25,6 +29,7 @@ struct pp_string_query_t* new_pp_string_query(const char* varname, ilist_entry_t
 	query->super.observe = 0;
 	query->super.accept = pp_string_query_acceptor;
 	query->super.full_accept = pp_string_query_acceptor;
+	query->super.destroy = __pp_string_query_destroy;
 	
 	int len = strlen(varname);
 	query->varname = malloc(sizeof(char) * (len + 1));
@@ -585,6 +590,3 @@ static int pp_string_query_acceptor(pp_query_t* _query, pp_trace_t* trace) {
 	return 1;
 }
 
-void pp_compiled_query_destroy(pp_query_t* query) {
-	pp_string_query_destroy((pp_string_query_t*) query);
-}

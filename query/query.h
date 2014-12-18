@@ -13,10 +13,19 @@ typedef pp_variable_t* (*pp_observed_name_to_value_t)(pp_query_t* query, const c
 
 typedef int (*pp_query_acceptor_t)(pp_query_t* query, pp_trace_t* trace);
 
+typedef void (*pp_query_destroy_t)(void* query);
+
+typedef enum pp_query_type_t {
+	PP_STRING_QUERY,
+	PP_OBSERVATION,
+	PP_COMPOSITION
+} pp_query_type_t;
+
 struct pp_query_t {
 	pp_observed_name_to_value_t observe;
 	pp_query_acceptor_t accept;
 	pp_query_acceptor_t full_accept;
+	pp_query_destroy_t destroy;
 };
 
 enum pp_query_accept_result {
@@ -30,6 +39,8 @@ int pp_query_always_accept(pp_query_t* query, pp_trace_t* trace);
 pp_variable_t* pp_query_observe_nothing(pp_query_t* query, const char* varname);
 
 pp_query_t* pp_query_no_condition();
+
+void pp_query_destroy(pp_query_t* query);
 
 #endif /* QUERY_H */
 

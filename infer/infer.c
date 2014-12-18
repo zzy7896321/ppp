@@ -14,6 +14,12 @@
 unsigned g_sample_iterations = 200;
 sample_function_t g_sample_function = rejection_sampling;
 
+int g_prompt_per_round = 0; 
+
+void set_prompt_per_round(int round) {
+	g_prompt_per_round = round;
+}
+
 void set_sample_iterations(int sample_iterations) {
 	g_sample_iterations = sample_iterations;
 }
@@ -139,7 +145,11 @@ int pp_sample_f(
 	pp_trace_store_t* traces = new_pp_trace_store(g_sample_iterations);
 	void* internal_data = 0;
 	for (unsigned i = 0; i < g_sample_iterations; ++i) {
-		ERR_OUTPUT("sample round %d\n", i);
+		//ERR_OUTPUT("sample round %d\n", i);
+		if (g_prompt_per_round > 0 && i % g_prompt_per_round == 0) {
+			printf("sample round %d\n", i);
+		}
+
 		int status = g_sample_function(state, model_name, param, query, &internal_data, &(traces->trace[i]), sa, sa_data);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			ERR_OUTPUT("error: %s\n", pp_sample_get_error_string(status));
@@ -171,10 +181,6 @@ int pp_get_result(pp_trace_store_t* traces, pp_query_t* query, float* result) {
 	int accepted_cnt = 0;
 
 	for (unsigned i = 0; i < num_traces; ++i) {
-		/*ERR_OUTPUT("trace %d, 0x%08x:\n", i, traces->trace[i]);
-		char buffer[8096];
-		pp_trace_dump(traces->trace[i], buffer, 8096);
-		printf(buffer); */
 		int acc_result = query->full_accept(query, traces->trace[i]);
 		if (acc_result == 1) {
 			++accepted_cnt;

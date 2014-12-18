@@ -142,6 +142,8 @@ int main()
 
     pp_trace_store_destroy(traces);
 
+	pp_query_destroy(query);
+
     for (int i = 0; i < 4; ++i)
         pp_variable_destroy(param[i]);
 

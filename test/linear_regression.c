@@ -92,7 +92,7 @@ int main() {
 	printf("E[b] = %f, var(b) = %f\n", mb, vb);
 
 	pp_trace_store_destroy(traces);
-	free_pp_query_observation(query);
+	pp_query_destroy(query);
 
 	free(X); free(Y);
 	

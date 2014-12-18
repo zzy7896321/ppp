@@ -11,8 +11,6 @@ pp_query_t* pp_query_observe_float_array(pp_state_t* state, const char* varname,
 pp_query_t* pp_query_observe_int_array_2D(pp_state_t* state, const char* varname, int array[], int dim1, int dim2);
 pp_query_t* pp_query_observe_float_array_2D(pp_state_t* state, const char* varname, float array[], int dim1, int dim2);
 
-void free_pp_query_observation(pp_query_t* query);
-
 pp_variable_t* pp_query_observe_value(pp_query_t* query, const char* varname);
 
 #endif	/* QUERY_OBSERVATION */

@@ -34,12 +34,7 @@ void set_mh_lag(int lag);
 
 void set_mh_max_initial_round(int initial_round);
 
-inline void pp_variable_destroy_all(struct pp_variable_t* param[], int n) {
-	void pp_variable_destroy(struct pp_variable_t*);
-	if (n <= 0) return; 
-	while (n--) {
-		pp_variable_destroy(param[n]);
-	}
-}
+void set_prompt_per_round(int round);
+
 
 #endif

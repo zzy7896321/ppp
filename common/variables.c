@@ -362,3 +362,11 @@ int pp_variable_access_float(pp_variable_t* variable, float* value, int dims, ..
 	*value = PP_VARIABLE_FLOAT_VALUE(variable);
 	return 0;
 }
+
+void pp_variable_destroy_all(struct pp_variable_t* param[], int n) {
+	void pp_variable_destroy(struct pp_variable_t*);
+	if (n <= 0) return; 
+	while (n--) {
+		pp_variable_destroy(param[n]);
+	}
+}

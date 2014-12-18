@@ -31,6 +31,5 @@ int pp_string_query_dump(pp_string_query_t* query, char* buffer, int buf_size);
 void pp_string_query_destroy(pp_string_query_t* query);
 
 pp_query_t* pp_compile_string_query(const char* query_string);
-void pp_compiled_query_destroy(pp_query_t* query);
 
 #endif

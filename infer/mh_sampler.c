@@ -97,7 +97,7 @@ int mh_sampling(
 		//FIXME what if !mh_sampler_has_same_model ?? possible memory leak!!
 
 
-		ERR_OUTPUT("sampling initial trace\n");
+		//ERR_OUTPUT("sampling initial trace\n");
 		int status = mh_sampler_init_trace(mh_sampler);
 		if (status != 0) {
 			pp_sample_error_return(status, "");	
@@ -109,9 +109,10 @@ int mh_sampling(
 		 *pp_trace_dump(buffer, 8000, (pp_trace_t*) mh_sampler->current_trace);
 		 *printf("%s\n", buffer);
 		 */
-
+	
+		ERR_OUTPUT("burn-in\n");
 		for (unsigned i = 0; i != g_mh_sampler_burn_in_iterations; ++i) {
-			ERR_OUTPUT("burn-in step %d\n", i);
+			//ERR_OUTPUT("burn-in step %d\n", i);
 			int status = mh_sampler_step(mh_sampler);
 			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 				pp_sample_error_return(status, "");
@@ -121,7 +122,7 @@ int mh_sampling(
 
 	/* run mcmc */
 	for (unsigned i = 0; i != g_mh_sampler_lag; ++i) {
-		ERR_OUTPUT("step, %d\n", i);
+		//ERR_OUTPUT("step, %d\n", i);
 		int status = mh_sampler_step(mh_sampler);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			pp_sample_error_return(status, "");

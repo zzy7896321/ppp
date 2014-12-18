@@ -59,5 +59,6 @@ int pp_variable_access_int(pp_variable_t* variable, int* value, int dims, ...);
 int pp_variable_access_float(pp_variable_t* variable, float* value, int dims, ...);
 
 void pp_variable_destroy(pp_variable_t* variable);
+void pp_variable_destroy_all(struct pp_variable_t* param[], int n);
 
 #endif
