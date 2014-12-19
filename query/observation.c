@@ -80,7 +80,7 @@ pp_query_t* pp_query_observe_int_array_2D(pp_state_t* state, const char* varname
 	pp_variable_t* var = new_pp_vector(dim1);
 
 	for (int i = 0; i < dim1; ++i) {
-		PP_VARIABLE_VECTOR_VALUE(var)[i] = pp_variable_int_array_to_vector(array + i * dim1, dim2);
+		PP_VARIABLE_VECTOR_VALUE(var)[i] = pp_variable_int_array_to_vector(array + i * dim2, dim2);
 		++PP_VARIABLE_VECTOR_LENGTH(var);
 	}
 
@@ -92,7 +92,7 @@ pp_query_t* pp_query_observe_float_array_2D(pp_state_t* state, const char* varna
 	pp_variable_t* var = new_pp_vector(dim1);
 
 	for (int i = 0; i < dim1; ++i) {
-		PP_VARIABLE_VECTOR_VALUE(var)[i] = pp_variable_float_array_to_vector(array + i * dim1, dim2);
+		PP_VARIABLE_VECTOR_VALUE(var)[i] = pp_variable_float_array_to_vector(array + i * dim2, dim2);
 		++PP_VARIABLE_VECTOR_LENGTH(var);
 	}
 

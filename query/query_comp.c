@@ -55,6 +55,7 @@ pp_query_comp_t* new_pp_query_comp(pp_query_t* first, pp_query_t* second) {
 
 	query->first = first;
 	query->second = second;
+	return query;
 }
 
 void pp_query_comp_destroy(pp_query_comp_t* query) {

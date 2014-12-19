@@ -13,9 +13,9 @@
 #define ALPHA ((float)1)
 #define BETA ((float)1)
 #define K 2
-#define N 1000
-#define NWORDS 100
-#define V 30000
+#define N 10
+#define NWORDS 20
+#define V 30
 
 #define PORTION_TRAIN 0.7
 #define NTRAIN ((int) N * PORTION_TRAIN)
@@ -34,7 +34,8 @@ void stat_sample(void* data, struct pp_trace_t* trace) {
 	pp_variable_t* p_c = pp_trace_find_variable(trace, "c");
 
 	for (int i = 0; i < N; ++i) {
-		int cat = PP_VARIABLE_INT_VALUE(p_c);
+		pp_variable_t* p_c_i = PP_VARIABLE_VECTOR_VALUE(p_c)[i];
+		int cat = PP_VARIABLE_INT_VALUE(p_c_i);
 		++num[i][cat];
 	}
 }
@@ -101,8 +102,6 @@ int main() {
 
 	int result = pp_sample_f(state, "naive_bayes", param, query, stat_sample, 0);
 
-	
-
 	pp_variable_destroy_all(param, 6);
 	pp_query_destroy(query);
 	pp_free(state);
@@ -112,12 +111,15 @@ int main() {
 	fprintf(fout, "%-8s%10s%10s%4s%4s\n", "no.", "p(0)", "p(1)", "tru", "inf");
 	
 	int cnt[K][K];
+	memset(cnt, 0, sizeof(sizeof(int) * K * K));
 	for (int i = 0; i < N; ++i) {
 		fprintf(fout, "%-8d", i);
 		int cat = 0;
 		for (int j = 0; j < K; ++j) {
 			if (num[i][j] > num[i][cat]) cat = j;
 			fprintf(fout, "%10f", num[i][j] / (float) NSAMPLES);
+
+			printf("num[%d][%d] = %d\n", i, j, num[i][j]);
 		}
 
 		fprintf(fout, "%4d%4d\n", c[i], cat);
@@ -126,13 +128,19 @@ int main() {
 			cnt[cat][c[i]]++;
 		}
 	}
+	
+	fprintf(fout, "\ntp = %d, fp = %d, fn = %d\n", cnt[1][1], cnt[1][0], cnt[0][1]);
+	printf("tp = %d, fp = %d, fn = %d\n", cnt[1][1], cnt[1][0], cnt[0][1]);
 
 	float prec = ((float) cnt[1][1]) / (cnt[1][1] + cnt[1][0]);
 	float recall = ((float) cnt[1][1]) / (cnt[1][1] + cnt[0][1]);
+	
+	fprintf(fout, "precision = %f, recall = %f\n", prec, recall);
+	printf("precision = %f, recall = %f\n", prec, recall);
 
 	float f1_score = 2 * (prec * recall) / (prec + recall);
 
-	fprintf(fout, "\nf1 score = %f\n", f1_score);
+	fprintf(fout, "f1 score = %f\n", f1_score);
 	printf("f1 score = %f", f1_score);
 
 	fclose(fout);
