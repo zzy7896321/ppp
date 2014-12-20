@@ -19,6 +19,7 @@
 unsigned g_mh_sampler_burn_in_iterations = 200;
 unsigned g_mh_sampler_lag = 20;
 unsigned g_mh_sampler_maximum_initial_round = 200;
+unsigned g_mh_sampler_prompt_per_step = 0;
 
 void set_mh_burn_in(int burn_in) {	
 	g_mh_sampler_burn_in_iterations = burn_in;
@@ -30,6 +31,10 @@ void set_mh_lag(int lag) {
 
 void set_mh_max_initial_round(int initial_round) {
 	g_mh_sampler_maximum_initial_round = initial_round;
+}
+
+void set_mh_prompt_per_step(int step) {
+	g_mh_sampler_prompt_per_step = step;
 }
 
 #define STACK_DEFAULT_VALUE 0
@@ -84,6 +89,7 @@ int mh_sampling(
 	/* clean up internal data */
 	if (!state) {
 		//ERR_OUTPUT("clearing internal data\n");
+		ERR_OUTPUT("%%accepted = %f\n", mh_sampler->n_accepted / (float) mh_sampler->n_steps);
 		mh_sampler_destroy(mh_sampler);
 		*internal_data_ptr = 0;
 		return PP_SAMPLE_FUNCTION_NORMAL;
@@ -110,22 +116,35 @@ int mh_sampling(
 		 *printf("%s\n", buffer);
 		 */
 	
-		ERR_OUTPUT("burn-in\n");
+		printf("burn-in\n"); 
+		fflush(stdout);
+		//ERR_OUTPUT("burn-in\n");
 		for (unsigned i = 0; i != g_mh_sampler_burn_in_iterations; ++i) {
 			//ERR_OUTPUT("burn-in step %d\n", i);
 			int status = mh_sampler_step(mh_sampler);
 			if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 				pp_sample_error_return(status, "");
 			}
+			
+			if (g_mh_sampler_prompt_per_step > 0 && i % g_mh_sampler_prompt_per_step == 0) {
+				printf("step %d\n", i);
+				fflush(stdout);
+			}
+
 		}
 	}
 
 	/* run mcmc */
 	for (unsigned i = 0; i != g_mh_sampler_lag; ++i) {
 		//ERR_OUTPUT("step, %d\n", i);
+
 		int status = mh_sampler_step(mh_sampler);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			pp_sample_error_return(status, "");
+		}
+		if (g_mh_sampler_prompt_per_step > 0 && i % g_mh_sampler_prompt_per_step == 0) {
+			printf("step %d\n", i);
+			fflush(stdout);
 		}
 	}
 
@@ -149,6 +168,9 @@ mh_sampler_t* new_mh_sampler(pp_state_t* state, const char* name, pp_variable_t*
 
 	mh_sampler->loop_index = new_loop_index_stack(0x10);
 	mh_sampler->current_trace = 0;
+
+	mh_sampler->n_accepted = 0;
+	mh_sampler->n_steps = 0;
 
 	return mh_sampler;
 }
@@ -549,11 +571,14 @@ int mh_sampler_step(mh_sampler_t* mh_sampler) {
 		/* accept */
 		mh_sampling_trace_destroy(mh_sampler->current_trace);
 		mh_sampler->current_trace = new_trace;
+		++mh_sampler->n_accepted;
 	}
 	else {
 		/* reject */
 		mh_sampling_trace_destroy(new_trace);
 	}
+
+	++mh_sampler->n_steps;
 
 	pp_sample_normal_return(PP_SAMPLE_FUNCTION_NORMAL);
 }

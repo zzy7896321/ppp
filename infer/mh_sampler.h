@@ -47,6 +47,9 @@ struct mh_sampler_t {
 	mh_sampling_trace_t* current_trace;
 	float ll_stale;
 	float ll_fresh;
+
+	int n_accepted;
+	int n_steps;
 };
 
 mh_sampler_t* new_mh_sampler(pp_state_t* state, const char* model_name, pp_variable_t* param[], pp_query_t* query);

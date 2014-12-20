@@ -146,15 +146,17 @@ int pp_sample_f(
 	void* internal_data = 0;
 	for (unsigned i = 0; i < g_sample_iterations; ++i) {
 		//ERR_OUTPUT("sample round %d\n", i);
-		if (g_prompt_per_round > 0 && i % g_prompt_per_round == 0) {
-			printf("sample round %d\n", i);
-		}
 
 		int status = g_sample_function(state, model_name, param, query, &internal_data, &(traces->trace[i]), sa, sa_data);
 		if (status != PP_SAMPLE_FUNCTION_NORMAL) {
 			ERR_OUTPUT("error: %s\n", pp_sample_get_error_string(status));
 			pp_trace_store_destroy(traces);
 			return 1;
+		}
+
+		if (g_prompt_per_round > 0 && i % g_prompt_per_round == 0) {
+			printf("sample round %d\n", i);
+			fflush(stdout);
 		}
 
 		/*ERR_OUTPUT("sample round %d\n", i);

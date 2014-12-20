@@ -12,9 +12,9 @@
 #define ALPHA ((float)1)
 #define BETA ((float)1)
 #define K 2
-#define N 10
-#define NWORDS 20
-#define V 30
+#define N 1000
+#define NWORDS 100
+#define V 3000
 
 int main() {
 	set_sample_method("Rejection");

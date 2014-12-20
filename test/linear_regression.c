@@ -16,6 +16,7 @@ int main() {
 	set_mh_burn_in(200);
 	set_mh_lag(10);
 	set_mh_max_initial_round(2000);
+	set_prompt_per_round(50);
 	
 	pp_state_t* state;
 	struct pp_instance_t* instance;
@@ -90,6 +91,15 @@ int main() {
 	
 	printf("\nE[a] = %f, var(a) = %f\n", ma, va);
 	printf("E[b] = %f, var(b) = %f\n", mb, vb);
+
+	/* calculate MSE */
+	float mse = 0.0;
+	for (int i = 0; i < N; ++i) {
+		float y_hat = ma * X[i] + mb;
+		mse += (y_hat - Y[i]) * (y_hat - Y[i]);
+	}
+	mse /= N;
+	printf("MSE = %f\n", mse);
 
 	pp_trace_store_destroy(traces);
 	pp_query_destroy(query);

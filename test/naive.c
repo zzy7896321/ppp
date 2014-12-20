@@ -13,17 +13,17 @@
 #define ALPHA ((float)1)
 #define BETA ((float)1)
 #define K 2
-#define N 10
-#define NWORDS 20
-#define V 30
+#define N 1000
+#define NWORDS 100
+#define V 3000
 
 #define PORTION_TRAIN 0.7
 #define NTRAIN ((int) N * PORTION_TRAIN)
 #define NTEST (N - NTRAIN)
 
-#define BURN_IN 200
-#define NSAMPLES 1000
-#define LAG 100
+#define BURN_IN 1000
+#define NSAMPLES 10000
+#define LAG 1000
 
 int c[N];
 int X[N][NWORDS];
@@ -46,6 +46,7 @@ int main() {
 	set_mh_burn_in(BURN_IN);
 	set_mh_lag(LAG);
 	set_prompt_per_round(1);
+	set_mh_prompt_per_step(1);
 
 	pp_state_t* state;
 	struct pp_instance_t* instance;

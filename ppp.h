@@ -36,5 +36,7 @@ void set_mh_max_initial_round(int initial_round);
 
 void set_prompt_per_round(int round);
 
+void set_mh_prompt_per_step(int step);
+
 
 #endif
