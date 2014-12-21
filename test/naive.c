@@ -13,17 +13,17 @@
 #define ALPHA ((float)1)
 #define BETA ((float)1)
 #define K 2
-#define N 1000
-#define NWORDS 100
-#define V 3000
+#define N 50
+#define NWORDS 10
+#define V 20
 
 #define PORTION_TRAIN 0.7
 #define NTRAIN ((int) N * PORTION_TRAIN)
 #define NTEST (N - NTRAIN)
 
 #define BURN_IN 1000
-#define NSAMPLES 10000
-#define LAG 1000
+#define NSAMPLES 1000
+#define LAG 100
 
 int c[N];
 int X[N][NWORDS];
@@ -45,8 +45,7 @@ int main() {
 	set_sample_iterations(NSAMPLES);
 	set_mh_burn_in(BURN_IN);
 	set_mh_lag(LAG);
-	set_prompt_per_round(1);
-	set_mh_prompt_per_step(1);
+	set_prompt_per_round(50);
 
 	pp_state_t* state;
 	struct pp_instance_t* instance;
@@ -112,7 +111,7 @@ int main() {
 	fprintf(fout, "%-8s%10s%10s%4s%4s\n", "no.", "p(0)", "p(1)", "tru", "inf");
 	
 	int cnt[K][K];
-	memset(cnt, 0, sizeof(sizeof(int) * K * K));
+	memset(cnt, 0, sizeof(int) * K * K);
 	for (int i = 0; i < N; ++i) {
 		fprintf(fout, "%-8d", i);
 		int cat = 0;
@@ -120,7 +119,7 @@ int main() {
 			if (num[i][j] > num[i][cat]) cat = j;
 			fprintf(fout, "%10f", num[i][j] / (float) NSAMPLES);
 
-			printf("num[%d][%d] = %d\n", i, j, num[i][j]);
+			//printf("num[%d][%d] = %d\n", i, j, num[i][j]);
 		}
 
 		fprintf(fout, "%4d%4d\n", c[i], cat);
@@ -135,14 +134,19 @@ int main() {
 
 	float prec = ((float) cnt[1][1]) / (cnt[1][1] + cnt[1][0]);
 	float recall = ((float) cnt[1][1]) / (cnt[1][1] + cnt[0][1]);
-	
+
+	float accuracy = ((float) cnt[0][0] + cnt[1][1]) / NTEST;
+
+	fprintf(fout, "accuracy = %f\n", accuracy);
+	printf("accuracy = %f\n", accuracy);
+
 	fprintf(fout, "precision = %f, recall = %f\n", prec, recall);
 	printf("precision = %f, recall = %f\n", prec, recall);
 
 	float f1_score = 2 * (prec * recall) / (prec + recall);
 
 	fprintf(fout, "f1 score = %f\n", f1_score);
-	printf("f1 score = %f", f1_score);
+	printf("f1 score = %f\n", f1_score);
 
 	fclose(fout);
 
