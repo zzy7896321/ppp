@@ -42,5 +42,7 @@ pp_query_t* pp_query_no_condition();
 
 void pp_query_destroy(pp_query_t* query);
 
+int pp_mean(pp_trace_store_t* traces, const char* varname, float* result);
+
 #endif /* QUERY_H */
 

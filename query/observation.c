@@ -35,7 +35,7 @@ pp_query_observation_t* new_pp_query_observation(const char* varname, pp_variabl
 	pp_query_observation_t* query = malloc(sizeof(pp_query_observation_t));
 
 	query->super.observe = pp_query_observe_value;
-	query->super.accept = pp_query_always_accept;
+	query->super.accept = pp_query_observation_full_accept;
 	query->super.full_accept = pp_query_observation_full_accept;
 	query->super.destroy = __pp_query_observation_destroy;
 

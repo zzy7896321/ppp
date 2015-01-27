@@ -41,3 +41,4 @@ test/*.txt
 *.tar.gz
 
 *.log
+parse/test

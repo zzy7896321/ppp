@@ -1,19 +1,27 @@
-model hidden_markov_model(n, a, b) {
-    // n -- chain length
-    // a -- number of possible states
-    // b -- number of possible observations
-    public states[n]   // hidden states
-    public observ[n]   // observations
-    public trans[a,a]  // transition matrix of size a*a
-    public emiss[a,b]  // emission matrix of size a*b
-    public start[a]    // start probabilities of size a
+model hidden_markov_model(T, N, M, alpha, beta) {
+    // T chain length
+    // N number of possible states
+    // M number of possible observations
+    // X[T]   hidden states
+    // Y[T]   observations
+    // phi[N,N]  transition matrix of size a*a
+    // theta[N,M]  emission matrix of size a*b
+    // start[N]    start probabilities of size a
 
-    states[0] ~ dcat(start)
-    for i = 1 to n-1 {
-        states[i] ~ dcat(trans[states[i-1]])
-    }
+	// alpha hyperparameter of theta
+	// beta hyperparameter of phi 
 
-    for i = 0 to n-1 {
-        observ[i] ~ dcat(emiss[states[i]])
-    }
+	for i = 0 to N - 1 {
+		theta[i] ~ dirichlet(alpha, M)
+		phi[i] ~ dirichlet(beta, N)
+	}
+
+	start ~ dirichlet(1, N)
+
+	X[0] ~ multinomial(start)
+	Y[0] ~ multinomial(theta[X[0]])
+	for i = 1 to T - 1 {
+		X[i] ~ multinomial(phi[X[i-1]])
+		Y[i] ~ multinomial(theta[X[i]])
+	}
 }
