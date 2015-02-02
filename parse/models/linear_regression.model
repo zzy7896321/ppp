@@ -1,7 +1,7 @@
 model linear_regression(n, x) {
 	
 	a ~ gaussian(0, 1)
-	b ~ gaussian(5.0, 1.825741858)
+	b ~ gaussian(4.5, 1.8)
 	invNoise ~ gamma(1, 1)
 	sigma = 1 / sqrt(invNoise)
 

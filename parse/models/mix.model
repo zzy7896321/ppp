@@ -1,9 +1,0 @@
-model mix() {
-	flip_prob = 0.5
-	for i = 0 to 6 {
-		f[i] ~ flip(flip_prob)
-		x1 ~ gaussian(0,1)
-		x2 ~ gamma(1, 1)
-		x[i] = if f[i] then x1 else x2 + 2
-	}
-}

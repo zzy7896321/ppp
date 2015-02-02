@@ -1,0 +1,29 @@
+model gaussian_mixture_model(K, N, mu0, lambda, alpha, beta, b) {
+	// K 	the number of mixture components
+	// N 	the number of observations
+	// mu0, lambda, alpha, beta 
+	//		parameters of Normal-inverse-gamma distribution
+	// b 	hyperparameter of phi
+
+	// mu[K]	mean of components
+	// prec[K]	precision of components
+	// stddev[K] 	standard deviation of components
+
+	// phi		the mixture weights
+	// z[N]		the component of observations
+	// x[N]		the components
+
+	phi ~ dirichlet(b, K)
+
+	for i = 0 to K - 1 {
+		prec[i] ~ gamma(alpha, beta)
+		stddev[i] = 1 / sqrt(prec[i])
+		mu[i] ~ gaussian(mu0, stddev[i] / lambda)
+	}
+
+	for i = 0 to N - 1 {
+		z[i] ~ multinomial(phi)
+		x[i] ~ gaussian(mu[z[i]], stddev[z[i]])
+	}
+}
+

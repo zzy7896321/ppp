@@ -44,5 +44,7 @@ void pp_query_destroy(pp_query_t* query);
 
 int pp_mean(pp_trace_store_t* traces, const char* varname, float* result);
 
+int pp_mean_vector(pp_trace_store_t* traces, const char* varname, float* result, int n);
+
 #endif /* QUERY_H */
 
